@@ -25,7 +25,7 @@ def init_app_data(*, template_dir: str | Path | None = None) -> Path:
     (target / "logs").mkdir(exist_ok=True)
     (target / "snapshots").mkdir(exist_ok=True)
 
-    templates = Path(template_dir).resolve() if template_dir else Path.cwd()
+    templates = _template_dir(Path(template_dir).resolve() if template_dir else Path.cwd())
     _copy_if_missing(templates / "config.example.toml", target / "config.toml")
     _copy_if_missing(templates / "assignees.example.json", target / "assignees.json")
     _copy_if_missing(templates / "report-agent.example.md", target / "report-agent.md")
@@ -75,6 +75,15 @@ def _copy_if_missing(source: Path, destination: Path) -> None:
     if destination.exists() or not source.exists():
         return
     shutil.copyfile(source, destination)
+
+
+def _template_dir(base: Path) -> Path:
+    if (base / "config.example.toml").exists():
+        return base
+    examples = base / "examples"
+    if (examples / "config.example.toml").exists():
+        return examples
+    return base
 
 
 def _create_state_if_missing(destination: Path) -> None:

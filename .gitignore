@@ -5,6 +5,7 @@ __pycache__/
 .pas/
 .pas-smoke/
 .env
+.idea/
 config.toml
 assignees.json
 .venv/

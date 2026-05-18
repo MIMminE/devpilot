@@ -9,8 +9,8 @@ check:
 
 [unix]
 smoke:
-    PAS_APP_DATA_DIR=.pas-smoke {{py}} -m pas_automation.cli --template-dir . --config config.example.toml slack test --dry-run
-    PAS_APP_DATA_DIR=.pas-smoke {{py}} -m pas_automation.cli --template-dir . --config config.example.toml jira today --dry-run
+    PAS_APP_DATA_DIR=.pas-smoke {{py}} -m pas_automation.cli --template-dir examples --config examples/config.example.toml slack test --dry-run
+    PAS_APP_DATA_DIR=.pas-smoke {{py}} -m pas_automation.cli --template-dir examples --config examples/config.example.toml jira today --dry-run
 
 clean:
     find . -type d -name __pycache__ -prune -exec rm -rf {} +

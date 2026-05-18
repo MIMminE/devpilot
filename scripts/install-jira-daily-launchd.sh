@@ -10,7 +10,7 @@ mkdir -p "$AGENT_DIR" "$PROJECT_ROOT/.pas/logs"
 chmod +x "$PROJECT_ROOT/scripts/send-jira-daily.sh"
 
 sed "s#/Users/yourname/PAS#$PROJECT_ROOT#g" \
-  "$PROJECT_ROOT/launchd/$LABEL.plist" > "$TARGET_PLIST"
+  "$PROJECT_ROOT/ops/launchd/$LABEL.plist" > "$TARGET_PLIST"
 
 launchctl unload "$TARGET_PLIST" >/dev/null 2>&1 || true
 launchctl load "$TARGET_PLIST"
