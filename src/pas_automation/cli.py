@@ -36,6 +36,15 @@ from pas_automation.features.jira_daily import assign_issue, format_today_items
 from pas_automation.features.jira_flow import team_flow
 from pas_automation.features.jira_issues import create_issue
 from pas_automation.features.jira_issue_watch import check_new_issues
+from pas_automation.features.overtime import (
+    add_overtime_record,
+    delete_overtime_record,
+    overtime_records,
+    overtime_settings,
+    overtime_summary,
+    save_overtime_settings,
+    update_overtime_record,
+)
 from pas_automation.features.repo_report import report, snapshot
 from pas_automation.features.repo_morning_sync import morning_sync
 from pas_automation.features.repo_status import summarize_repositories
@@ -54,7 +63,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="pas", description="PAS 개인 개발자 자동화 비서")
     parser.add_argument("--config", help="사용할 config.toml 경로")
     parser.add_argument("--env", help="호환용 .env 파일 경로")
-    parser.add_argument("--template-dir", help="config.example.toml이 있는 템플릿 폴더")
+    parser.add_argument("--template-dir", help="예제 설정 파일이 있는 템플릿 폴더. 기본값은 ./examples 또는 현재 폴더")
 
     subparsers = parser.add_subparsers(dest="area", required=True)
 
@@ -188,6 +197,45 @@ def build_parser() -> argparse.ArgumentParser:
     memo_add.add_argument("--text-file", required=True, help="저장할 메모 텍스트 파일")
     memo_list = memo_sub.add_parser("list", help="작업 메모 목록 조회")
     memo_list.add_argument("--format", choices=["json", "text"], default="json", help="출력 형식")
+
+    overtime = subparsers.add_parser("overtime", help="연장 근무 기록과 예상 수당")
+    overtime_sub = overtime.add_subparsers(dest="command", required=True)
+    overtime_add = overtime_sub.add_parser("add", help="연장 근무 기록 추가")
+    overtime_add.add_argument("--date", default="", help="근무 날짜 YYYY-MM-DD. 비우면 오늘")
+    overtime_add.add_argument("--hours", default="", help="연장 근무 시간. 시작/종료 시간을 넣으면 자동 계산")
+    overtime_add.add_argument("--start", default="", help="시작 시간 HH:MM")
+    overtime_add.add_argument("--end", default="", help="종료 시간 HH:MM")
+    overtime_add.add_argument("--kind", choices=["overtime", "night", "holiday"], default="overtime", help="근무 구분")
+    overtime_add.add_argument("--memo", default="", help="사유/메모")
+    overtime_update = overtime_sub.add_parser("update", help="연장 근무 기록 수정")
+    overtime_update.add_argument("--id", required=True, help="수정할 기록 id")
+    overtime_update.add_argument("--date", required=True, help="근무 날짜 YYYY-MM-DD")
+    overtime_update.add_argument("--hours", default="", help="연장 근무 시간. 시작/종료 시간을 넣으면 자동 계산")
+    overtime_update.add_argument("--start", default="", help="시작 시간 HH:MM")
+    overtime_update.add_argument("--end", default="", help="종료 시간 HH:MM")
+    overtime_update.add_argument("--kind", choices=["overtime", "night", "holiday"], default="overtime", help="근무 구분")
+    overtime_update.add_argument("--memo", default="", help="사유/메모")
+    overtime_delete = overtime_sub.add_parser("delete", help="연장 근무 기록 삭제")
+    overtime_delete.add_argument("--id", required=True, help="삭제할 기록 id")
+    overtime_list = overtime_sub.add_parser("list", help="연장 근무 기록 목록")
+    overtime_list.add_argument("--month", default="", help="대상 월 YYYY-MM")
+    overtime_list.add_argument("--format", choices=["json", "text"], default="json", help="출력 형식")
+    overtime_summary_parser = overtime_sub.add_parser("summary", help="월별 연장 근무 예상 수당")
+    overtime_summary_parser.add_argument("--month", default="", help="대상 월 YYYY-MM. 비우면 이번 달")
+    overtime_summary_parser.add_argument("--format", choices=["json", "text"], default="json", help="출력 형식")
+    overtime_settings_parser = overtime_sub.add_parser("settings", help="연장 수당 계산 설정 조회/저장")
+    overtime_settings_parser.add_argument("--hourly-rate", default="", help="시급")
+    overtime_settings_parser.add_argument("--overtime-multiplier", default="", help="연장 배율")
+    overtime_settings_parser.add_argument("--night-multiplier", default="", help="야간 추가 배율")
+    overtime_settings_parser.add_argument("--holiday-multiplier", default="", help="휴일 추가 배율")
+    overtime_settings_parser.add_argument("--rounding-minutes", type=int, default=0, help="반올림 단위 분")
+    overtime_settings_parser.add_argument("--currency", default="KRW", help="통화")
+    overtime_settings_parser.add_argument("--inclusive-salary", choices=["true", "false"], default="", help="포괄임금제 여부")
+    overtime_settings_parser.add_argument("--inclusive-weekly-hours", default="", help="주당 포괄 연장 시간")
+    overtime_settings_parser.add_argument("--base-monthly-salary", default="", help="월 기본급")
+    overtime_settings_parser.add_argument("--inclusive-overtime-pay", default="", help="월 포괄 연장근로 수당")
+    overtime_settings_parser.add_argument("--statutory-base-pay", default="", help="법정/통상임금 산정 기준액 메모용 금액")
+    overtime_settings_parser.add_argument("--format", choices=["json", "text"], default="json", help="출력 형식")
 
     repo_morning_sync = repo_sub.add_parser("morning-sync", help="출근 Git 정비: fetch, 안전한 최신화, 전체 상태 알림")
     repo_morning_sync.add_argument("--send-slack", action="store_true", help="Slack으로 결과 전송")
@@ -572,6 +620,79 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.area == "memo" and args.command == "list":
         print(work_notes(output_format=args.format))
+        return 0
+
+    if args.area == "overtime" and args.command == "add":
+        print(
+            add_overtime_record(
+                config,
+                work_date=args.date,
+                hours=args.hours,
+                kind=args.kind,
+                start_time=args.start,
+                end_time=args.end,
+                memo=args.memo,
+            )
+        )
+        return 0
+
+    if args.area == "overtime" and args.command == "update":
+        print(
+            update_overtime_record(
+                record_id=args.id,
+                work_date=args.date,
+                hours=args.hours,
+                kind=args.kind,
+                start_time=args.start,
+                end_time=args.end,
+                memo=args.memo,
+            )
+        )
+        return 0
+
+    if args.area == "overtime" and args.command == "delete":
+        print(delete_overtime_record(record_id=args.id))
+        return 0
+
+    if args.area == "overtime" and args.command == "list":
+        print(overtime_records(month=args.month, output_format=args.format))
+        return 0
+
+    if args.area == "overtime" and args.command == "summary":
+        print(overtime_summary(month=args.month, output_format=args.format))
+        return 0
+
+    if args.area == "overtime" and args.command == "settings":
+        if (
+            args.hourly_rate
+            or args.overtime_multiplier
+            or args.night_multiplier
+            or args.holiday_multiplier
+            or args.rounding_minutes
+            or args.inclusive_salary
+            or args.inclusive_weekly_hours
+            or args.base_monthly_salary
+            or args.inclusive_overtime_pay
+            or args.statutory_base_pay
+        ):
+            current = json.loads(overtime_settings(output_format="json"))
+            print(
+                save_overtime_settings(
+                    hourly_rate=args.hourly_rate or current["hourly_rate"],
+                    overtime_multiplier=args.overtime_multiplier or current["overtime_multiplier"],
+                    night_multiplier=args.night_multiplier or current["night_multiplier"],
+                    holiday_multiplier=args.holiday_multiplier or current["holiday_multiplier"],
+                    rounding_minutes=args.rounding_minutes or int(current["rounding_minutes"]),
+                    currency=args.currency or current["currency"],
+                    inclusive_salary_enabled=(args.inclusive_salary == "true") if args.inclusive_salary else bool(current.get("inclusive_salary_enabled")),
+                    inclusive_weekly_hours=args.inclusive_weekly_hours or current.get("inclusive_weekly_hours", "0"),
+                    base_monthly_salary=args.base_monthly_salary or current.get("base_monthly_salary", "0"),
+                    inclusive_overtime_pay=args.inclusive_overtime_pay or current.get("inclusive_overtime_pay", "0"),
+                    statutory_base_pay=args.statutory_base_pay or current.get("statutory_base_pay", "0"),
+                )
+            )
+        else:
+            print(overtime_settings(output_format=args.format))
         return 0
 
     if args.area == "repo" and args.command == "morning-sync":
