@@ -136,7 +136,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "보고서 작성 규칙"
+        window.title = "AI 프롬프트 규칙"
         window.center()
         window.contentView = NSHostingView(rootView: ReportAgentEditorView(runner: self))
         window.isReleasedWhenClosed = false
@@ -480,6 +480,30 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
             return PASCommandResult(succeeded: true, output: "보고서 작성 규칙을 저장했습니다.", summary: "저장 완료")
         } catch {
             let message = "보고서 작성 규칙 저장 실패: \(error.localizedDescription)"
+            status = message
+            return PASCommandResult(succeeded: false, output: message, summary: message)
+        }
+    }
+
+    func loadCodexPromptRules() -> String {
+        do {
+            try Self.prepareSupportFiles()
+            return try String(contentsOf: Self.codexPromptRulesURL(), encoding: .utf8)
+        } catch {
+            let message = "Codex 공통 규칙을 불러오지 못했습니다: \(error.localizedDescription)"
+            status = message
+            return message
+        }
+    }
+
+    func saveCodexPromptRules(_ text: String) -> PASCommandResult {
+        do {
+            try Self.prepareSupportFiles()
+            try text.write(to: Self.codexPromptRulesURL(), atomically: true, encoding: .utf8)
+            status = "Codex 공통 규칙을 저장했습니다"
+            return PASCommandResult(succeeded: true, output: "Codex 공통 규칙을 저장했습니다.", summary: "저장 완료")
+        } catch {
+            let message = "Codex 공통 규칙 저장 실패: \(error.localizedDescription)"
             status = message
             return PASCommandResult(succeeded: false, output: message, summary: message)
         }
@@ -917,24 +941,21 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         let rules = (try? String(contentsOf: Self.reportAgentURL(), encoding: .utf8)) ?? ""
         let noteSection = notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "- 없음" : notes.trimmingCharacters(in: .whitespacesAndNewlines)
         let draftSection = draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "- 먼저 초안 만들기를 실행해 Git 근거를 채워 주세요." : draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        return """
-        아래 Git 근거와 수동 메모를 바탕으로 한국어 일일 업무 보고서를 작성해줘.
-
-        조건:
-        - 확인된 사실과 추정을 구분해줘.
-        - 커밋 메시지만으로 알 수 없는 내용은 단정하지 마.
-        - Slack에 바로 보낼 수 있게 간결하게 작성해줘.
-        - 섹션은 오늘 한 일, 주요 변경점, 확인 필요, 내일 이어갈 일 순서로 정리해줘.
-
-        [보고서 작성 규칙]
-        \(rules.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "- 기본 형식: 오늘 한 일, 주요 변경점, 확인 필요, 내일 이어갈 일" : rules.trimmingCharacters(in: .whitespacesAndNewlines))
-
-        [수동 메모]
-        \(noteSection)
-
-        [Git 근거 초안]
-        \(draftSection)
-        """
+        return CodexPromptBuilder.build(
+            kind: .report,
+            userRequest: "아래 Git 근거와 수동 메모를 바탕으로 한국어 일일 업무 보고서를 작성해줘.",
+            context: [
+                CodexPromptSection("보고서 작성 규칙", rules.isEmpty ? "- 기본 형식: 오늘 한 일, 주요 변경점, 확인 필요, 내일 이어갈 일" : rules),
+                CodexPromptSection("수동 메모", noteSection),
+                CodexPromptSection("Git 근거 초안", draftSection),
+            ],
+            globalRules: loadCodexPromptRulesForPrompt(),
+            rules: [
+                "커밋 메시지만으로 알 수 없는 내용은 단정하지 않는다.",
+                "Slack이나 메신저에 바로 보낼 수 있게 간결하게 작성한다.",
+                "섹션은 오늘 한 일, 주요 변경점, 확인 필요, 내일 이어갈 일 순서로 정리한다.",
+            ]
+        )
     }
 
     func refineReportWithCodex(draft: String, notes: String = "") async -> PASCommandResult {
@@ -979,26 +1000,22 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         let rules = (try? String(contentsOf: Self.reportAgentURL(), encoding: .utf8)) ?? ""
         let noteSection = notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "- 없음" : notes.trimmingCharacters(in: .whitespacesAndNewlines)
         let draftSection = draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "- 입력 초안 없음" : draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        return """
-        너는 PAS 앱 안에서 개발자의 하루를 같이 정리해주는 보고서 도우미다.
-        아래 근거만 사용해서 한국어 일일 업무 보고서를 차분하고 자연스럽게 작성해줘.
-
-        요구사항:
-        - 확인된 사실과 추정은 섞지 말고, 커밋/PR 제목만으로 모르는 내용은 단정하지 말아줘.
-        - Slack이나 메신저에 바로 붙여넣을 수 있게 너무 장황하지 않게 써줘.
-        - 섹션은 "오늘 한 일", "주요 변경점", "확인 필요", "내일 이어갈 일" 순서로 작성해줘.
-        - Jira 키, repository 이름, PR/커밋 근거가 있으면 자연스럽게 보존해라.
-        - 출력은 보고서 본문만 작성하고, 설명이나 메타 코멘트는 붙이지 말아줘.
-
-        [보고서 작성 규칙]
-        \(rules.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "- 기본 형식: 오늘 한 일, 주요 변경점, 확인 필요, 내일 이어갈 일" : rules.trimmingCharacters(in: .whitespacesAndNewlines))
-
-        [수동 메모]
-        \(noteSection)
-
-        [PAS 수집 초안]
-        \(draftSection)
-        """
+        return CodexPromptBuilder.build(
+            kind: .report,
+            userRequest: "아래 근거만 사용해서 한국어 일일 업무 보고서를 차분하고 자연스럽게 작성해줘.",
+            context: [
+                CodexPromptSection("보고서 작성 규칙", rules.isEmpty ? "- 기본 형식: 오늘 한 일, 주요 변경점, 확인 필요, 내일 이어갈 일" : rules),
+                CodexPromptSection("수동 메모", noteSection),
+                CodexPromptSection("PAS 수집 초안", draftSection),
+            ],
+            globalRules: loadCodexPromptRulesForPrompt(),
+            rules: [
+                "커밋/PR 제목만으로 모르는 내용은 단정하지 않는다.",
+                "Jira 키, repository 이름, PR/커밋 근거가 있으면 자연스럽게 보존한다.",
+                "Slack이나 메신저에 바로 붙여넣을 수 있게 너무 장황하지 않게 쓴다.",
+                "섹션은 오늘 한 일, 주요 변경점, 확인 필요, 내일 이어갈 일 순서로 작성한다.",
+            ]
+        )
     }
 
     func refineMemoWithCodex(text: String, targetTitle: String) async -> PASCommandResult {
@@ -1014,21 +1031,19 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         }
 
         let outputURL = Self.activeSupportDirectory().appendingPathComponent("codex-memo-\(UUID().uuidString).md")
-        let prompt = """
-        너는 PAS 빠른 작업 메모를 같이 정리해주는 동료 같은 도우미다.
-        사용자의 메모 초안을 바탕으로 질문에 답해줘.
-        사실을 새로 만들지 말고, 메모의 의도와 불확실성은 보존해줘.
-        답변은 바로 메모에 붙여도 어색하지 않게 짧고 실무적으로 작성해줘.
-
-        [작업]
-        \(targetTitle.isEmpty ? "일반 메모" : targetTitle)
-
-        [요청]
-        \(question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "이 메모를 다듬어줘." : question)
-
-        [메모 초안]
-        \(text)
-        """
+        let prompt = CodexPromptBuilder.build(
+            kind: .memo,
+            userRequest: question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "이 메모를 다듬어줘." : question,
+            context: [
+                CodexPromptSection("작업", targetTitle.isEmpty ? "일반 메모" : targetTitle),
+                CodexPromptSection("메모 초안", text),
+            ],
+            globalRules: loadCodexPromptRulesForPrompt(),
+            rules: [
+                "메모의 의도와 불확실성을 보존한다.",
+                "사용자의 초안에 없는 사실을 추가하지 않는다.",
+            ]
+        )
         isRunning = true
         status = "Codex와 메모를 정리하는 중..."
         let result = await Self.executeDetachedRaw(
@@ -1162,6 +1177,116 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         return (try? JSONDecoder().decode([WorkMemoRecord].self, from: data)) ?? []
     }
 
+    func loadOvertimeSummary(month: String = "") async -> OvertimeSummaryRecord {
+        var arguments = ["overtime", "summary", "--format", "json"]
+        if !month.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            arguments.append(contentsOf: ["--month", month])
+        }
+        let result = await Self.executeDetached(arguments)
+        lastOutput = result.output
+        guard result.succeeded, let data = result.output.data(using: .utf8),
+              let summary = try? JSONDecoder().decode(OvertimeSummaryRecord.self, from: data) else {
+            status = "연장 근무 요약 조회 실패"
+            return .empty
+        }
+        status = "연장 근무 요약을 불러왔습니다"
+        return summary
+    }
+
+    func saveOvertimeRecord(date: String, hours: String, kind: String, startTime: String, endTime: String, memo: String) async -> PASCommandResult {
+        var arguments = ["overtime", "add", "--date", date, "--hours", hours, "--kind", kind, "--memo", memo]
+        if !startTime.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !endTime.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            arguments.append(contentsOf: ["--start", startTime, "--end", endTime])
+        }
+        let result = await runDashboardCommand(
+            arguments,
+            runningStatus: "연장 근무 기록 저장 중...",
+            successStatus: "연장 근무 기록 저장 완료",
+            failureStatus: "연장 근무 기록 저장 실패"
+        )
+        if !result.succeeded {
+            openOutputWindow(title: "연장 근무 기록 오류", output: result.displayText)
+        }
+        return result
+    }
+
+    func updateOvertimeRecord(id: String, date: String, hours: String, kind: String, startTime: String, endTime: String, memo: String) async -> PASCommandResult {
+        var arguments = ["overtime", "update", "--id", id, "--date", date, "--hours", hours, "--kind", kind, "--memo", memo]
+        if !startTime.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !endTime.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            arguments.append(contentsOf: ["--start", startTime, "--end", endTime])
+        }
+        let result = await runDashboardCommand(
+            arguments,
+            runningStatus: "연장 근무 기록 수정 중...",
+            successStatus: "연장 근무 기록 수정 완료",
+            failureStatus: "연장 근무 기록 수정 실패"
+        )
+        if !result.succeeded {
+            openOutputWindow(title: "연장 근무 수정 오류", output: result.displayText)
+        }
+        return result
+    }
+
+    func deleteOvertimeRecord(id: String) async -> PASCommandResult {
+        let result = await runDashboardCommand(
+            ["overtime", "delete", "--id", id],
+            runningStatus: "연장 근무 기록 삭제 중...",
+            successStatus: "연장 근무 기록 삭제 완료",
+            failureStatus: "연장 근무 기록 삭제 실패"
+        )
+        if !result.succeeded {
+            openOutputWindow(title: "연장 근무 삭제 오류", output: result.displayText)
+        }
+        return result
+    }
+
+    func saveOvertimeSettings(
+        hourlyRate: String,
+        overtimeMultiplier: String,
+        nightMultiplier: String,
+        holidayMultiplier: String,
+        roundingMinutes: String,
+        inclusiveSalaryEnabled: Bool,
+        inclusiveWeeklyHours: String,
+        baseMonthlySalary: String,
+        inclusiveOvertimePay: String,
+        statutoryBasePay: String
+    ) async -> PASCommandResult {
+        let result = await runDashboardCommand(
+            [
+                "overtime",
+                "settings",
+                "--hourly-rate",
+                hourlyRate,
+                "--overtime-multiplier",
+                overtimeMultiplier,
+                "--night-multiplier",
+                nightMultiplier,
+                "--holiday-multiplier",
+                holidayMultiplier,
+                "--rounding-minutes",
+                roundingMinutes,
+                "--inclusive-salary",
+                inclusiveSalaryEnabled ? "true" : "false",
+                "--inclusive-weekly-hours",
+                inclusiveWeeklyHours,
+                "--base-monthly-salary",
+                baseMonthlySalary,
+                "--inclusive-overtime-pay",
+                inclusiveOvertimePay,
+                "--statutory-base-pay",
+                statutoryBasePay,
+            ],
+            runningStatus: "연장 수당 설정 저장 중...",
+            successStatus: "연장 수당 설정 저장 완료",
+            failureStatus: "연장 수당 설정 저장 실패"
+        )
+        if !result.succeeded {
+            openOutputWindow(title: "연장 수당 설정 오류", output: result.displayText)
+        }
+        return result
+    }
+
     func loadMemoTargets(forceRefresh: Bool = false) async -> [MemoTargetOption] {
         if memoTargetsLoaded && !forceRefresh {
             return memoTargets
@@ -1209,27 +1334,22 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
             .prefix(8)
             .map { "- [\($0.date)] \($0.text)" }
             .joined(separator: "\n")
-        let context = """
-        # \(issue) Codex 작업 컨텍스트
-
-        ## Jira
-        - Key: \(issue)
-        - Summary: \(summary.isEmpty ? "-" : summary)
-
-        ## Detail
-        \(detail.isEmpty ? "-" : detail)
-
-        ## Managed Repositories
-        \(repoList.isEmpty ? "- 관리 저장소 없음" : repoList)
-
-        ## Work Memos
-        \(memoList.isEmpty ? "- 연결된 메모 없음" : memoList)
-
-        ## Suggested Guardrails
-        - 이 작업은 위 관리 repository 범위 안에서만 검토한다.
-        - 변경 전 현재 브랜치와 미커밋 변경을 확인한다.
-        - 커밋/브랜치 메시지에는 Jira 키 \(issue)를 유지한다.
-        """
+        let context = CodexPromptBuilder.build(
+            kind: .issueWorkspace,
+            userRequest: "\(issue) Jira 작업을 이어갈 수 있도록 관련 repository와 메모를 기준으로 작업 방향을 잡아줘.",
+            context: [
+                CodexPromptSection("Jira", "- Key: \(issue)\n- Summary: \(summary.isEmpty ? "-" : summary)"),
+                CodexPromptSection("Detail", detail.isEmpty ? "-" : detail),
+                CodexPromptSection("Managed Repositories", repoList.isEmpty ? "- 관리 저장소 없음" : repoList),
+                CodexPromptSection("Work Memos", memoList.isEmpty ? "- 연결된 메모 없음" : memoList),
+            ],
+            globalRules: loadCodexPromptRulesForPrompt(),
+            rules: [
+                "이 작업은 위 관리 repository 범위 안에서 우선 검토한다.",
+                "변경 전 현재 브랜치와 미커밋 변경을 확인한다.",
+                "커밋/브랜치/PR 메시지에는 Jira 키 \(issue)를 유지한다.",
+            ]
+        )
 
         do {
             try FileManager.default.createDirectory(at: contextDirectory, withIntermediateDirectories: true)
@@ -1270,31 +1390,32 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         let repoURL = URL(fileURLWithPath: repo.path, isDirectory: true).standardizedFileURL
         let contextDirectory = repoURL.appendingPathComponent(".pas-codex", isDirectory: true)
         let contextURL = contextDirectory.appendingPathComponent("repo-task-\(Date().timeIntervalSince1970).md")
-        let context = """
-        # \(repo.name) Codex 작업 지시
-
-        ## Repository
-        - path: \(repo.path)
-        - current branch: \(repo.branch)
-        - base: \(repo.baseLabel)
-        - sync: \(repo.syncLabel)
-        - dirty files: \(repo.dirtyCount)
-
-        ## 작업 유형
-        \(taskKind)
-
-        ## 지시
-        \(instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "- 사용자가 추가 지시를 작성하지 않았습니다." : instruction)
-
-        ## 컨벤션/주의사항
-        \(convention.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "- repository의 기존 컨벤션과 AGENTS.md가 있다면 우선 따릅니다." : convention)
-
-        ## 기본 가드레일
-        - 작업 전 `git status`와 현재 브랜치를 확인합니다.
-        - 사용자가 명시하지 않은 파일은 불필요하게 수정하지 않습니다.
-        - 커밋/PR 생성 전 변경 단위와 메시지를 한번 점검합니다.
-        - 위험한 명령이나 원격 반영은 사용자 승인 흐름을 따릅니다.
-        """
+        let context = CodexPromptBuilder.build(
+            kind: .repositoryTask,
+            userRequest: instruction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "이 repository의 현재 상태를 확인하고 필요한 다음 작업을 제안해줘." : instruction,
+            context: [
+                CodexPromptSection(
+                    "Repository",
+                    """
+                    - path: \(repo.path)
+                    - current branch: \(repo.branch)
+                    - base branch: \(repo.baseBranch.isEmpty ? "-" : repo.baseBranch)
+                    - base status: \(repo.baseLabel)
+                    - sync: \(repo.syncLabel)
+                    - dirty files: \(repo.dirtyCount)
+                    """
+                ),
+                CodexPromptSection("작업 유형", taskKind),
+                CodexPromptSection("컨벤션/주의사항", convention.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "- repository의 기존 컨벤션과 AGENTS.md가 있다면 우선 따른다." : convention),
+            ],
+            globalRules: loadCodexPromptRulesForPrompt(),
+            rules: [
+                "작업 전 `git status`와 현재 브랜치를 확인한다.",
+                "사용자가 명시하지 않은 파일은 불필요하게 수정하지 않는다.",
+                "커밋/PR 생성 전 변경 단위와 메시지를 한번 점검한다.",
+                "repository의 AGENTS.md 또는 기존 git log 스타일을 우선한다.",
+            ]
+        )
 
         do {
             try FileManager.default.createDirectory(at: contextDirectory, withIntermediateDirectories: true)
@@ -1669,6 +1790,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         copyExampleIfNeeded(resourcePath: "assignees.example.json", to: assigneesURL())
         copyExampleIfNeeded(resourcePath: "report-agent.example.md", to: reportAgentURL())
         createReportAgentIfNeeded()
+        createCodexPromptRulesIfNeeded()
         createStateIfNeeded()
     }
 
@@ -1756,6 +1878,10 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         activeSupportDirectory().appendingPathComponent("report-agent.md")
     }
 
+    private nonisolated static func codexPromptRulesURL() -> URL {
+        activeSupportDirectory().appendingPathComponent("codex-prompt-rules.md")
+    }
+
     private nonisolated static func logsDirectory() -> URL {
         activeSupportDirectory().appendingPathComponent("logs", isDirectory: true)
     }
@@ -1795,6 +1921,16 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         - 수동 메모는 Git 근거와 함께 우선 반영한다.
         """
         try? payload.write(to: destination, atomically: true, encoding: .utf8)
+    }
+
+    private func loadCodexPromptRulesForPrompt() -> String {
+        (try? String(contentsOf: Self.codexPromptRulesURL(), encoding: .utf8)) ?? CodexPromptBuilder.defaultGlobalRules
+    }
+
+    private nonisolated static func createCodexPromptRulesIfNeeded() {
+        let destination = codexPromptRulesURL()
+        guard !FileManager.default.fileExists(atPath: destination.path) else { return }
+        try? CodexPromptBuilder.defaultGlobalRules.write(to: destination, atomically: true, encoding: .utf8)
     }
 
     private func selectFile(allowedExtensions: [String], onSelect: @escaping (URL) -> Void) {
@@ -1869,6 +2005,133 @@ struct WorkMemoRecord: Identifiable, Codable, Hashable {
         case targetID = "target_id"
         case targetTitle = "target_title"
         case text
+    }
+}
+
+struct OvertimeSummaryRecord: Codable, Hashable {
+    let month: String
+    let currency: String
+    let recordCount: Int
+    let totalHours: String
+    let includedHours: String
+    let payableHours: String
+    let effectiveHourlyRate: String?
+    let grossCalculatedAllowance: String
+    let includedAllowance: String
+    let calculatedIncludedAllowance: String?
+    let contractIncludedAllowance: String?
+    let estimatedAllowance: String
+    let settings: OvertimeSettingsRecord
+    let records: [OvertimeRecord]
+
+    enum CodingKeys: String, CodingKey {
+        case month
+        case currency
+        case recordCount = "record_count"
+        case totalHours = "total_hours"
+        case includedHours = "included_hours"
+        case payableHours = "payable_hours"
+        case effectiveHourlyRate = "effective_hourly_rate"
+        case grossCalculatedAllowance = "gross_calculated_allowance"
+        case includedAllowance = "included_allowance"
+        case calculatedIncludedAllowance = "calculated_included_allowance"
+        case contractIncludedAllowance = "contract_included_allowance"
+        case estimatedAllowance = "estimated_allowance"
+        case settings
+        case records
+    }
+
+    static let empty = OvertimeSummaryRecord(
+        month: "",
+        currency: "KRW",
+        recordCount: 0,
+        totalHours: "0",
+        includedHours: "0",
+        payableHours: "0",
+        effectiveHourlyRate: "0",
+        grossCalculatedAllowance: "0",
+        includedAllowance: "0",
+        calculatedIncludedAllowance: "0",
+        contractIncludedAllowance: "0",
+        estimatedAllowance: "0",
+        settings: .default,
+        records: []
+    )
+}
+
+struct OvertimeSettingsRecord: Codable, Hashable {
+    let hourlyRate: String
+    let overtimeMultiplier: String
+    let nightMultiplier: String
+    let holidayMultiplier: String
+    let roundingMinutes: Int
+    let currency: String
+    let inclusiveSalaryEnabled: Bool
+    let inclusiveWeeklyHours: String
+    let baseMonthlySalary: String
+    let inclusiveOvertimePay: String
+    let statutoryBasePay: String
+
+    enum CodingKeys: String, CodingKey {
+        case hourlyRate = "hourly_rate"
+        case overtimeMultiplier = "overtime_multiplier"
+        case nightMultiplier = "night_multiplier"
+        case holidayMultiplier = "holiday_multiplier"
+        case roundingMinutes = "rounding_minutes"
+        case currency
+        case inclusiveSalaryEnabled = "inclusive_salary_enabled"
+        case inclusiveWeeklyHours = "inclusive_weekly_hours"
+        case baseMonthlySalary = "base_monthly_salary"
+        case inclusiveOvertimePay = "inclusive_overtime_pay"
+        case statutoryBasePay = "statutory_base_pay"
+    }
+
+    static let `default` = OvertimeSettingsRecord(
+        hourlyRate: "0",
+        overtimeMultiplier: "1.5",
+        nightMultiplier: "0.5",
+        holidayMultiplier: "0.5",
+        roundingMinutes: 10,
+        currency: "KRW",
+        inclusiveSalaryEnabled: false,
+        inclusiveWeeklyHours: "0",
+        baseMonthlySalary: "0",
+        inclusiveOvertimePay: "0",
+        statutoryBasePay: "0"
+    )
+}
+
+struct OvertimeRecord: Identifiable, Codable, Hashable {
+    let id: String
+    let date: String
+    let createdAt: String
+    let hours: String
+    let kind: String
+    let effectiveKind: String?
+    let isWeekend: Bool?
+    let dayType: String?
+    let startTime: String?
+    let endTime: String?
+    let autoClassified: Bool?
+    let nightHours: String?
+    let holidayHours: String?
+    let memo: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case date
+        case createdAt = "created_at"
+        case hours
+        case kind
+        case effectiveKind = "effective_kind"
+        case isWeekend = "is_weekend"
+        case dayType = "day_type"
+        case startTime = "start_time"
+        case endTime = "end_time"
+        case autoClassified = "auto_classified"
+        case nightHours = "night_hours"
+        case holidayHours = "holiday_hours"
+        case memo
     }
 }
 

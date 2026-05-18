@@ -117,7 +117,7 @@ final class PASAppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(menuItem("작업 대시보드 열기", action: #selector(openDashboard)))
         menu.addItem(menuItem("빠른 작업 메모", action: #selector(openQuickMemo)))
         menu.addItem(menuItem("설정 열기", action: #selector(openSettings)))
-        menu.addItem(menuItem("보고서 작성 규칙 편집", action: #selector(openReportAgent)))
+        menu.addItem(menuItem("AI 프롬프트 규칙 편집", action: #selector(openReportAgent)))
         menu.addItem(menuItem("설정 폴더 열기", action: #selector(openSupportDirectory)))
 
         if !runner.lastOutput.isEmpty {

@@ -3,12 +3,20 @@
 struct ReportAgentEditorView: View {
     @ObservedObject var runner: PASRunner
 
-    @State private var rules = ""
+    @State private var selectedScope = PromptRuleScope.codex
+    @State private var reportRules = ""
+    @State private var codexRules = ""
     @State private var message = ""
-    @State private var lastSavedRules = ""
+    @State private var lastSavedReportRules = ""
+    @State private var lastSavedCodexRules = ""
 
     private var hasChanges: Bool {
-        rules != lastSavedRules
+        switch selectedScope {
+        case .codex:
+            return codexRules != lastSavedCodexRules
+        case .report:
+            return reportRules != lastSavedReportRules
+        }
     }
 
     var body: some View {
@@ -24,10 +32,10 @@ struct ReportAgentEditorView: View {
                 .frame(width: 50, height: 50)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("보고서 작성 규칙")
+                    Text("AI 프롬프트 규칙")
                         .font(.title3)
                         .bold()
-                    Text("오늘 작업 보고서를 AI가 어떤 형식과 말투로 정리할지 정합니다.")
+                    Text("Codex에 보내는 공통 원칙과 보고서 전용 규칙을 한곳에서 관리합니다.")
                         .foregroundStyle(.secondary)
                 }
 
@@ -44,11 +52,18 @@ struct ReportAgentEditorView: View {
                 }
             }
 
+            Picker("규칙", selection: $selectedScope) {
+                ForEach(PromptRuleScope.allCases) { scope in
+                    Text(scope.title).tag(scope)
+                }
+            }
+            .pickerStyle(.segmented)
+
             HStack(alignment: .top, spacing: 14) {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Markdown 규칙")
+                    Text(selectedScope.editorTitle)
                         .font(.headline)
-                    TextEditor(text: $rules)
+                    TextEditor(text: activeRulesBinding)
                         .font(.system(.body, design: .monospaced))
                         .scrollContentBackground(.hidden)
                         .padding(10)
@@ -61,12 +76,11 @@ struct ReportAgentEditorView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("작성 가이드")
+                    Text(selectedScope.guideTitle)
                         .font(.headline)
-                    GuideHint(title: "섹션", detail: "오늘 한 일, 주요 변경점, 확인 필요, 내일 이어갈 일처럼 원하는 순서를 적습니다.")
-                    GuideHint(title: "말투", detail: "간결/상세/관리자용, 명사형 선호 같은 톤을 지정합니다.")
-                    GuideHint(title: "금지사항", detail: "모르는 내용을 단정하지 않기, 민감정보 제외 같은 규칙을 넣습니다.")
-                    GuideHint(title: "우선순위", detail: "수동 메모를 커밋보다 우선할지, Git 근거만 사실로 볼지 정합니다.")
+                    ForEach(selectedScope.guides) { guide in
+                        GuideHint(title: guide.title, detail: guide.detail)
+                    }
                     Spacer()
                 }
                 .frame(width: 220)
@@ -80,7 +94,12 @@ struct ReportAgentEditorView: View {
 
             HStack {
                 Button("기본 예시로 되돌리기") {
-                    rules = Self.defaultRules
+                    switch selectedScope {
+                    case .codex:
+                        codexRules = CodexPromptBuilder.defaultGlobalRules
+                    case .report:
+                        reportRules = Self.defaultReportRules
+                    }
                 }
 
                 Spacer()
@@ -90,26 +109,63 @@ struct ReportAgentEditorView: View {
                 }
 
                 Button("저장") {
-                    let result = runner.saveReportAgentRules(rules)
+                    let result: PASCommandResult
+                    switch selectedScope {
+                    case .codex:
+                        result = runner.saveCodexPromptRules(codexRules)
+                    case .report:
+                        result = runner.saveReportAgentRules(reportRules)
+                    }
                     message = result.displayText
                     if result.succeeded {
-                        lastSavedRules = rules
+                        switch selectedScope {
+                        case .codex:
+                            lastSavedCodexRules = codexRules
+                        case .report:
+                            lastSavedReportRules = reportRules
+                        }
                     }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(rules.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !hasChanges)
+                .disabled(activeRules.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !hasChanges)
             }
         }
         .padding(20)
         .frame(minWidth: 720, minHeight: 620)
         .task {
-            let loaded = runner.loadReportAgentRules()
-            rules = loaded
-            lastSavedRules = loaded
+            let loadedReport = runner.loadReportAgentRules()
+            let loadedCodex = runner.loadCodexPromptRules()
+            reportRules = loadedReport
+            codexRules = loadedCodex
+            lastSavedReportRules = loadedReport
+            lastSavedCodexRules = loadedCodex
         }
     }
 
-    private static let defaultRules = """
+    private var activeRules: String {
+        switch selectedScope {
+        case .codex:
+            return codexRules
+        case .report:
+            return reportRules
+        }
+    }
+
+    private var activeRulesBinding: Binding<String> {
+        Binding(
+            get: { activeRules },
+            set: { value in
+                switch selectedScope {
+                case .codex:
+                    codexRules = value
+                case .report:
+                    reportRules = value
+                }
+            }
+        )
+    }
+
+    private static let defaultReportRules = """
     # PAS Report Agent
 
     ## 목표
@@ -138,6 +194,68 @@ struct ReportAgentEditorView: View {
     """
 }
 
+private enum PromptRuleScope: String, CaseIterable, Identifiable {
+    case codex
+    case report
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .codex:
+            return "Codex 공통"
+        case .report:
+            return "보고서"
+        }
+    }
+
+    var editorTitle: String {
+        switch self {
+        case .codex:
+            return "모든 Codex 요청에 합쳐질 공통 규칙"
+        case .report:
+            return "보고서 작성 전용 Markdown 규칙"
+        }
+    }
+
+    var guideTitle: String {
+        switch self {
+        case .codex:
+            return "공통 규칙 가이드"
+        case .report:
+            return "보고서 가이드"
+        }
+    }
+
+    var guides: [PromptRuleGuide] {
+        switch self {
+        case .codex:
+            return [
+                PromptRuleGuide(title: "우선순위", detail: "사용자 요청, 앱 컨텍스트, 공통 원칙의 관계를 적습니다."),
+                PromptRuleGuide(title: "안전", detail: "커밋, push, PR, destructive 작업의 승인 기준을 둡니다."),
+                PromptRuleGuide(title: "말투", detail: "앱 전체의 Codex 답변 톤과 길이를 맞춥니다."),
+                PromptRuleGuide(title: "저장소", detail: "AGENTS.md, git log, 기준 브랜치 같은 개발 규칙을 공통으로 둡니다."),
+            ]
+        case .report:
+            return [
+                PromptRuleGuide(title: "섹션", detail: "오늘 한 일, 주요 변경점, 확인 필요, 내일 이어갈 일처럼 원하는 순서를 적습니다."),
+                PromptRuleGuide(title: "말투", detail: "간결/상세/관리자용, 명사형 선호 같은 톤을 지정합니다."),
+                PromptRuleGuide(title: "금지사항", detail: "모르는 내용을 단정하지 않기, 민감정보 제외 같은 규칙을 넣습니다."),
+                PromptRuleGuide(title: "우선순위", detail: "수동 메모를 커밋보다 우선할지, Git 근거만 사실로 볼지 정합니다."),
+            ]
+        }
+    }
+}
+
+private struct PromptRuleGuide: Identifiable {
+    let title: String
+    let detail: String
+
+    var id: String {
+        "\(title)-\(detail)"
+    }
+}
+
 private struct GuideHint: View {
     let title: String
     let detail: String
@@ -158,5 +276,4 @@ private struct GuideHint: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
-
 
