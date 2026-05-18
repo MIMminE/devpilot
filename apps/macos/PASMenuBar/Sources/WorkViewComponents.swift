@@ -55,13 +55,23 @@ struct WorkSidebarView: View {
                 }
 
                 WorkSidebarButton(
-                    title: "저장소 상태",
-                    systemImage: "folder.badge.gearshape",
-                    detail: repositoryCount > 0 ? "\(repositoryCount)" : nil,
-                    isSelected: selectedSection == "workspace",
+                    title: "작업",
+                    systemImage: "checklist",
+                    detail: nil,
+                    isSelected: selectedSection == "work" || selectedSection == "jira" || selectedSection == "tools",
                     isCollapsed: isCollapsed
                 ) {
-                    selectedSection = "workspace"
+                    selectedSection = "work"
+                }
+
+                WorkSidebarButton(
+                    title: "저장소",
+                    systemImage: "folder.badge.gearshape",
+                    detail: repositoryCount > 0 ? "\(repositoryCount)" : nil,
+                    isSelected: selectedSection == "repositories" || selectedSection == "workspace",
+                    isCollapsed: isCollapsed
+                ) {
+                    selectedSection = "repositories"
                 }
 
                 WorkSidebarButton(
@@ -82,16 +92,6 @@ struct WorkSidebarView: View {
                     isCollapsed: isCollapsed
                 ) {
                     selectedSection = "records"
-                }
-
-                WorkSidebarButton(
-                    title: "실행 보드",
-                    systemImage: "rectangle.grid.2x2",
-                    detail: nil,
-                    isSelected: selectedSection == "tools",
-                    isCollapsed: isCollapsed
-                ) {
-                    selectedSection = "tools"
                 }
             }
 
@@ -464,11 +464,17 @@ struct RepositoryDashboardRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            RepoGuidanceView(
-                title: guidanceTitle,
-                message: guidanceMessage,
-                color: statusColor
-            )
+            repoSnapshotGrid
+
+            if !repo.autoSyncMessage.isEmpty {
+                AutoSyncNotice(message: repo.autoSyncMessage)
+            } else if shouldShowGuidance {
+                RepoGuidanceView(
+                    title: guidanceTitle,
+                    message: guidanceMessage,
+                    color: statusColor
+                )
+            }
 
             VStack(alignment: .leading, spacing: 10) {
                 TodayCommitInlineView(repo: repo, visibleRows: visibleCommitRows)
@@ -523,6 +529,33 @@ struct RepositoryDashboardRow: View {
                 RepoStatusBadge(text: "변경 \(repo.dirtyCount)", color: .orange)
             }
         }
+    }
+
+    private var repoSnapshotGrid: some View {
+        LazyVGrid(
+            columns: [
+                GridItem(.flexible(), spacing: 8),
+                GridItem(.flexible(), spacing: 8),
+                GridItem(.flexible(), spacing: 8),
+            ],
+            spacing: 8
+        ) {
+            RepoSnapshotTile(title: "브랜치", value: repo.branch, systemImage: "arrow.branch", tint: statusColor)
+            RepoSnapshotTile(title: "오늘 작업", value: repo.todayCommitCount > 0 ? "\(repo.todayCommitCount)개 · \(repo.todayCommitLatest)" : "오늘 커밋 없음", systemImage: "clock", tint: repo.todayCommitCount > 0 ? .green : .secondary)
+            RepoSnapshotTile(title: "PR/릴리즈", value: repo.githubSummaryAvailable ? "정보 있음" : "정보 없음", systemImage: "arrow.triangle.pull", tint: repo.githubSummaryAvailable ? .blue : .secondary)
+        }
+    }
+
+    private var shouldShowGuidance: Bool {
+        repo.dirtyCount > 0 ||
+        repo.isProtectedWorkflowBranch ||
+        !repo.baseRebaseAlert.isEmpty ||
+        repo.needsBaseRebase ||
+        repo.needsRebase ||
+        repo.needsUpdate ||
+        (repo.ahead ?? 0) > 0 ||
+        (repo.behind ?? 0) > 0 ||
+        repo.isWorkingBranch
     }
 
     private var statusColor: Color {
@@ -654,6 +687,65 @@ struct RepositoryDashboardRow: View {
             return "1. 원격 상태 확인 -> 2. 테스트 -> 3. Push"
         }
         return "추가 조치 없이 작업을 시작해도 됩니다."
+    }
+}
+
+struct RepoSnapshotTile: View {
+    let title: String
+    let value: String
+    let systemImage: String
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(tint.opacity(0.86))
+                .frame(width: 16)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Text(value.isEmpty ? "-" : value)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(8)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.58))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .help(value)
+    }
+}
+
+struct AutoSyncNotice: View {
+    let message: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "checkmark.arrow.trianglehead.counterclockwise")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.green)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("자동 처리됨")
+                    .font(.caption.weight(.semibold))
+                Text(message)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(9)
+        .background(Color.green.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.green.opacity(0.18))
+        )
+        .help(message)
     }
 }
 

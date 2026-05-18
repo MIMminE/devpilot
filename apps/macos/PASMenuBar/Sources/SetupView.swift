@@ -75,7 +75,7 @@ struct SetupView: View {
     @State private var isDeveloperExpanded = true
     @State private var isAutomationExpanded = false
     @State private var isTestExpanded = false
-    @State private var selectedSettingsSection = "developer"
+    @State private var selectedSettingsSection = "basic"
 
     init(runner: PASRunner) {
         self.runner = runner
@@ -112,7 +112,7 @@ struct SetupView: View {
             localRepositories = []
             remoteRepositories = []
             selectedRemoteRepositoryIDs = []
-            selectedSettingsSection = "developer"
+            selectedSettingsSection = "basic"
         }
     }
 
@@ -159,34 +159,41 @@ struct SetupView: View {
     @ViewBuilder
     private var selectedSettingsContent: some View {
         switch selectedSettingsSection {
-        case "profiles":
-            profileSection
-        case "slack":
-            if runner.isPersonalProfile { developerSection } else { slackSection }
-        case "jira":
-            if runner.isPersonalProfile { developerSection } else { jiraSection }
+        case "basic":
+            VStack(alignment: .leading, spacing: 12) {
+                profileSection
+                developerSection
+            }
+        case "integrations":
+            if runner.isPersonalProfile {
+                developerSection
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    jiraSection
+                    slackSection
+                }
+            }
         case "automation":
             if runner.isPersonalProfile { developerSection } else { automationSection }
         case "test":
             testSection
         default:
-            developerSection
+            VStack(alignment: .leading, spacing: 12) {
+                profileSection
+                developerSection
+            }
         }
     }
 
     private var availableSettingsSections: [SettingsSidebarItem] {
         var items: [SettingsSidebarItem] = [
-            SettingsSidebarItem(id: "profiles", title: "프로필", systemImage: "person.2")
+            SettingsSidebarItem(id: "basic", title: "기본", systemImage: "slider.horizontal.3")
         ]
         if !runner.isPersonalProfile {
-            items.append(SettingsSidebarItem(id: "slack", title: "Slack", systemImage: "number"))
-            items.append(SettingsSidebarItem(id: "jira", title: "Jira", systemImage: "checklist"))
+            items.append(SettingsSidebarItem(id: "integrations", title: "연동", systemImage: "point.3.connected.trianglepath.dotted"))
+            items.append(SettingsSidebarItem(id: "automation", title: "고급", systemImage: "clock.arrow.circlepath"))
         }
-        items.append(SettingsSidebarItem(id: "developer", title: "개발", systemImage: "terminal"))
-        if !runner.isPersonalProfile {
-            items.append(SettingsSidebarItem(id: "automation", title: "자동 실행", systemImage: "clock.arrow.circlepath"))
-        }
-        items.append(SettingsSidebarItem(id: "test", title: "연결 확인", systemImage: "stethoscope"))
+        items.append(SettingsSidebarItem(id: "test", title: "점검", systemImage: "stethoscope"))
         return items
     }
 

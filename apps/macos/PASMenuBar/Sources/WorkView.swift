@@ -14,6 +14,7 @@ struct WorkView: View {
     @AppStorage("pas.briefing.yesterdayMemo") private var briefingYesterdayMemo = ""
     @AppStorage("pas.briefing.focusProject") private var briefingFocusProject = ""
     @AppStorage("pas.briefing.memoryLog") private var briefingMemoryLog = ""
+    @AppStorage("pas.overtime.settingsPasscode") private var overtimeSettingsPasscode = ""
 
     @State private var repositories: [LocalRepositoryOption] = []
     @State private var isLoading = false
@@ -48,6 +49,34 @@ struct WorkView: View {
     @State private var selectedReportID = ""
     @State private var workMemos: [WorkMemoRecord] = []
     @State private var codexHealth = CodexHealthStatus.unknown
+    @State private var selectedWorkIssueKey = ""
+    @State private var recordsViewMode = "reports"
+    @State private var overtimeSummary = OvertimeSummaryRecord.empty
+    @State private var overtimeSelectedDate = Date()
+    @State private var overtimeCalendarMonth = Date()
+    @State private var overtimeUsesTimeRange = true
+    @State private var overtimeStartHour = 18
+    @State private var overtimeStartMinute = 0
+    @State private var overtimeEndHour = 20
+    @State private var overtimeEndMinute = 0
+    @State private var overtimeHours = ""
+    @State private var overtimeKind = "overtime"
+    @State private var overtimeMemo = ""
+    @State private var editingOvertimeRecordID = ""
+    @State private var overtimeHourlyRate = ""
+    @State private var overtimeMultiplier = "1.5"
+    @State private var overtimeNightMultiplier = "0.5"
+    @State private var overtimeHolidayMultiplier = "0.5"
+    @State private var overtimeRoundingMinutes = "10"
+    @State private var isOvertimeExpanded = false
+    @State private var isOvertimeSettingsUnlocked = false
+    @State private var overtimePasscodeInput = ""
+    @State private var overtimeNewPasscode = ""
+    @State private var overtimeInclusiveSalaryEnabled = false
+    @State private var overtimeInclusiveWeeklyHours = "0"
+    @State private var overtimeBaseMonthlySalary = "0"
+    @State private var overtimeInclusiveOvertimePay = "0"
+    @State private var overtimeStatutoryBasePay = "0"
 
     private var filteredRepositories: [LocalRepositoryOption] {
         let ordered = orderedRepositories(repositories)
@@ -275,25 +304,25 @@ struct WorkView: View {
         switch selectedSection {
         case "dashboard", "briefing":
             dashboardSection
-        case "report":
-            reportSection
-        case "records":
-            recordsSection
-        case "jira":
-            dashboardSection
-        case "tools":
-            commandCenter
-        default:
+        case "work", "jira", "tools":
+            workSection
+        case "repositories", "workspace":
             VStack(alignment: .leading, spacing: 16) {
                 repositoryActions
                 repositorySection
             }
+        case "report":
+            reportSection
+        case "records":
+            recordsSection
+        default:
+            dashboardSection
         }
     }
 
     private var commandCenter: some View {
         CollapsibleDashboardPanel(
-            title: "업무 실행 보드",
+            title: runner.isPersonalProfile ? "개인 프로젝트 도우미" : "작업 도우미",
             systemImage: "rectangle.grid.2x2",
             isExpanded: $isCommandCenterExpanded
         ) {
@@ -315,9 +344,16 @@ struct WorkView: View {
         }
     }
 
+    private var workSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            myJiraDashboardPanel
+            commandCenter
+        }
+    }
+
     private var dashboardSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            DashboardPanel(title: "오늘 대시보드", systemImage: "rectangle.grid.2x2") {
+            DashboardPanel(title: "오늘 개발 상황판", systemImage: "rectangle.grid.2x2") {
                 HStack(spacing: 6) {
                     panelActionChip(title: "브리핑", systemImage: "doc.text") {
                         Task {
@@ -362,6 +398,10 @@ struct WorkView: View {
                         }
                     }
                     .disabled(runner.isRunning)
+
+                    panelActionChip(title: "작업 시작", systemImage: "arrow.branch") {
+                        selectedSection = "work"
+                    }
                 }
             } content: {
                 VStack(alignment: .leading, spacing: 14) {
@@ -369,7 +409,7 @@ struct WorkView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(todayTitle)
                                 .font(.title2.weight(.semibold))
-                            Text(runner.isPersonalProfile ? "개인 프로젝트 대시보드" : "업무 대시보드")
+                            Text(runner.isPersonalProfile ? "개인 프로젝트 진행 상태" : "오늘 할 일과 저장소 위험 신호")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -400,7 +440,7 @@ struct WorkView: View {
                 }
             }
 
-            myJiraDashboardPanel
+            compactTodayWorkPanel
 
             LazyVGrid(
                 columns: [
@@ -410,15 +450,46 @@ struct WorkView: View {
                 alignment: .leading,
                 spacing: 12
             ) {
-                if !runner.isPersonalProfile {
-                    teamFlowPanel
-                }
                 focusProjectPanel
-                yesterdayMemoPanel
                 briefingMemoryPanel
-                calendarBriefingPanel
-                weeklyBriefingPanel
-                monthlyBriefingPanel
+            }
+        }
+    }
+
+    private var compactTodayWorkPanel: some View {
+        DashboardPanel(title: "오늘 할 일", systemImage: "checklist") {
+            HStack(spacing: 6) {
+                panelActionChip(title: "작업 화면", systemImage: "arrow.right") {
+                    selectedSection = "work"
+                }
+                if !runner.isPersonalProfile {
+                    panelActionChip(title: "새로고침", systemImage: "arrow.clockwise") {
+                        Task { await loadJiraMorningItems(notifyLocal: false) }
+                    }
+                    .disabled(runner.isRunning)
+                }
+            }
+        } content: {
+            if runner.isPersonalProfile {
+                EmptyDashboardState(systemImage: "checklist", title: "개인 작업 소스 연결 전", message: "개인 프로젝트용 이슈 소스를 붙이면 오늘 할 일이 표시됩니다.")
+            } else if jiraMorningItems.isEmpty {
+                EmptyDashboardState(systemImage: "checklist", title: "오늘 할 일이 비어 있습니다", message: "앱 실행 시 Jira 일감을 자동으로 가져옵니다.")
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(jiraMorningItems.prefix(4)) { item in
+                        HStack(spacing: 8) {
+                            flowTag(item.key, tint: .blue)
+                            Text(item.title.isEmpty ? "제목 없음" : item.title)
+                                .font(.caption.weight(.semibold))
+                                .lineLimit(1)
+                            Spacer()
+                            jiraMetaChip(item.statusText, tint: flowTint(for: item.statusText))
+                        }
+                        .padding(8)
+                        .background(Color(nsColor: .textBackgroundColor).opacity(0.48))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                }
             }
         }
     }
@@ -554,6 +625,8 @@ struct WorkView: View {
                         Spacer()
                     }
 
+                    issueStartFlowPanel
+
                     ScrollView {
                         LazyVStack(spacing: 10) {
                             ForEach(jiraMorningItems.prefix(12)) { item in
@@ -566,6 +639,97 @@ struct WorkView: View {
                 }
 
             }
+        }
+    }
+
+    private var issueStartFlowPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Label("작업 시작 플로우", systemImage: "arrow.branch")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                if let item = selectedWorkIssue {
+                    Button {
+                        Task { await startFullIssueFlow(item) }
+                    } label: {
+                        Label("이 일감 시작", systemImage: "play.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .disabled(runner.isRunning)
+                }
+            }
+
+            HStack(spacing: 8) {
+                ForEach(jiraMorningItems.prefix(8)) { item in
+                    Button {
+                        selectedWorkIssueKey = item.key
+                    } label: {
+                        Text(item.key)
+                            .font(.caption2.weight(.semibold))
+                            .lineLimit(1)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(selectedWorkIssue?.key == item.key ? Color.accentColor.opacity(0.18) : Color(nsColor: .controlBackgroundColor).opacity(0.72))
+                            .foregroundStyle(selectedWorkIssue?.key == item.key ? Color.accentColor : Color.primary)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+                Spacer(minLength: 0)
+            }
+
+            if let item = selectedWorkIssue {
+                HStack(spacing: 7) {
+                    startFlowStep("1", "일감 선택", isActive: true)
+                    startFlowConnector
+                    startFlowStep("2", "저장소 연결", isActive: true)
+                    startFlowConnector
+                    startFlowStep("3", "브랜치 생성", isActive: true)
+                    startFlowConnector
+                    startFlowStep("4", "Codex 요청", isActive: true)
+                    Spacer(minLength: 0)
+                    Text(item.title)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .padding(10)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.46))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .onAppear {
+            if selectedWorkIssueKey.isEmpty {
+                selectedWorkIssueKey = jiraMorningItems.first?.key ?? ""
+            }
+        }
+    }
+
+    private var selectedWorkIssue: JiraListItem? {
+        if let selected = jiraMorningItems.first(where: { $0.key == selectedWorkIssueKey }) {
+            return selected
+        }
+        return jiraMorningItems.first
+    }
+
+    private var startFlowConnector: some View {
+        Rectangle()
+            .fill(Color(nsColor: .separatorColor).opacity(0.5))
+            .frame(width: 18, height: 1)
+    }
+
+    private func startFlowStep(_ number: String, _ title: String, isActive: Bool) -> some View {
+        HStack(spacing: 5) {
+            Text(number)
+                .font(.caption2.weight(.bold))
+                .frame(width: 17, height: 17)
+                .background(isActive ? Color.accentColor.opacity(0.16) : Color(nsColor: .controlBackgroundColor))
+                .foregroundStyle(isActive ? Color.accentColor : Color.secondary)
+                .clipShape(Circle())
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(isActive ? Color.primary : Color.secondary)
         }
     }
 
@@ -616,8 +780,8 @@ struct WorkView: View {
                     issueActionButton("연결/태그", systemImage: "link.badge.plus") {
                         runner.openIssueRepositoryLinkWindow(issue: item.key, summary: item.title)
                     }
-                    issueActionButton("브랜치 시작", systemImage: "arrow.branch") {
-                        Task { await startIssueWork(item) }
+                    issueActionButton("이 일감 시작", systemImage: "play.fill") {
+                        Task { await startFullIssueFlow(item) }
                     }
                     issueActionButton("추적", systemImage: "point.3.connected.trianglepath.dotted") {
                         Task { await traceIssueWork(item) }
@@ -1095,7 +1259,7 @@ struct WorkView: View {
     }
 
     private var repositoryActions: some View {
-        DashboardPanel(title: "저장소 정비", systemImage: "arrow.triangle.2.circlepath") {
+        DashboardPanel(title: "저장소 상태 도구", systemImage: "arrow.triangle.2.circlepath") {
             HStack(spacing: 10) {
                 DashboardButton(title: isLoading ? "확인 중" : "상태 동기화", systemImage: "arrow.clockwise") {
                     Task { await reload(notify: true, fetchRemote: true) }
@@ -1243,7 +1407,7 @@ struct WorkView: View {
     }
 
     private var repositorySection: some View {
-        DashboardPanel(title: "관리 저장소", systemImage: "point.3.connected.trianglepath.dotted") {
+        DashboardPanel(title: "저장소", systemImage: "point.3.connected.trianglepath.dotted") {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Picker("필터", selection: $filter) {
@@ -1330,7 +1494,7 @@ struct WorkView: View {
     }
 
     private var reportSection: some View {
-        DashboardPanel(title: "오늘 한 일 초안", systemImage: "doc.text") {
+        DashboardPanel(title: "보고서", systemImage: "doc.text") {
             HStack(spacing: 6) {
                 panelActionChip(title: "초안", systemImage: "doc.badge.gearshape") {
                     Task {
@@ -1353,7 +1517,7 @@ struct WorkView: View {
                 }
                 .disabled(runner.isRunning)
 
-                panelActionChip(title: "규칙", systemImage: "doc.plaintext") {
+                panelActionChip(title: "AI규칙", systemImage: "doc.plaintext") {
                     runner.openReportAgentEditor()
                 }
                 .disabled(runner.isRunning)
@@ -1375,6 +1539,8 @@ struct WorkView: View {
             }
         } content: {
             VStack(alignment: .leading, spacing: 12) {
+                reportFlowStrip
+
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("수동 메모")
@@ -1417,8 +1583,40 @@ struct WorkView: View {
         }
     }
 
+    private var reportFlowStrip: some View {
+        HStack(spacing: 8) {
+            reportStepPill("1", "초안 생성", isReady: !reportDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            startFlowConnector
+            reportStepPill("2", "Codex 다듬기", isReady: false)
+            startFlowConnector
+            reportStepPill("3", runner.isPersonalProfile ? "앱 기록" : "앱 + Slack 제출", isReady: false)
+            Spacer()
+            Text("제출하면 기록 화면의 보고서 탭에 자동으로 쌓입니다.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(9)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.42))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func reportStepPill(_ number: String, _ title: String, isReady: Bool) -> some View {
+        HStack(spacing: 5) {
+            Text(number)
+                .font(.caption2.weight(.bold))
+                .frame(width: 17, height: 17)
+                .background((isReady ? Color.green : Color.accentColor).opacity(0.14))
+                .foregroundStyle(isReady ? Color.green : Color.accentColor)
+                .clipShape(Circle())
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .lineLimit(1)
+        }
+    }
+
     private var recordsSection: some View {
-        DashboardPanel(title: "업무 기록", systemImage: "calendar") {
+        DashboardPanel(title: "기록", systemImage: "calendar") {
             panelActionChip(title: "새로고침", systemImage: "arrow.clockwise") {
                     Task { await loadRecords() }
             }
@@ -1434,11 +1632,15 @@ struct WorkView: View {
                         .frame(width: 300)
 
                     VStack(alignment: .leading, spacing: 12) {
-                        selectedReportDetail
-                        workMemoList
-                        Divider()
-                            .opacity(0.55)
-                        teamFlowPanel
+                        Picker("기록", selection: $recordsViewMode) {
+                            Text("보고서").tag("reports")
+                            Text("메모").tag("memos")
+                            Text("Jira 흐름").tag("jira")
+                            Text("연장 근무").tag("overtime")
+                        }
+                        .pickerStyle(.segmented)
+
+                        recordsDetailContent
                     }
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
@@ -1448,6 +1650,20 @@ struct WorkView: View {
                     await loadRecords()
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private var recordsDetailContent: some View {
+        switch recordsViewMode {
+        case "memos":
+            workMemoList
+        case "jira":
+            teamFlowPanel
+        case "overtime":
+            overtimePanel
+        default:
+            selectedReportDetail
         }
     }
 
@@ -1831,6 +2047,18 @@ struct WorkView: View {
         }
     }
 
+    private func startFullIssueFlow(_ item: JiraListItem) async {
+        selectedWorkIssueKey = item.key
+        let result = await runner.startIssueWork(issue: item.key, summary: item.title)
+        lastMessage = result.displayText
+        showNotice(title: "\(item.key) 작업 시작", message: result.displayText, succeeded: result.succeeded)
+        if result.succeeded {
+            rememberBriefing("\(item.key) 저장소 연결, 브랜치 생성, Codex 작업 요청")
+            await reload()
+            await openCodexWorkspace(item)
+        }
+    }
+
     private func recommendIssueRepository(_ item: JiraListItem) async {
         let result = await runner.recommendIssueRepository(issue: item.key, summary: item.title)
         lastMessage = result.displayText
@@ -1868,6 +2096,8 @@ struct WorkView: View {
     private func loadRecords(skipJiraFlow: Bool = false) async {
         submittedReports = await runner.loadSubmittedReports()
         workMemos = await runner.loadWorkMemos()
+        overtimeSummary = await runner.loadOvertimeSummary()
+        syncOvertimeSettings()
         if selectedReportID.isEmpty || !submittedReports.contains(where: { $0.id == selectedReportID }) {
             selectedReportID = submittedReports.first?.id ?? ""
         }
@@ -1878,6 +2108,645 @@ struct WorkView: View {
 
     private func loadCodexHealth() async {
         codexHealth = await runner.loadCodexHealth()
+    }
+
+    private var overtimePanel: some View {
+        DisclosureGroup(isExpanded: $isOvertimeExpanded) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 10) {
+                    overtimeMetric(title: "총 기록", value: "\(overtimeSummary.totalHours)h")
+                    overtimeMetric(title: "포괄 포함", value: "\(overtimeSummary.includedHours)h")
+                    overtimeMetric(title: "추가 산정", value: "\(overtimeSummary.payableHours)h")
+                    overtimeMetric(title: "예상 추가 수당", value: "\(formattedAllowance) \(overtimeSummary.currency)")
+                }
+                if shouldShowOvertimeRateFallbackNotice {
+                    Label("월 기본급 기준 추정 시급 \(formattedEffectiveHourlyRate) \(overtimeSummary.currency)을 사용합니다.", systemImage: "info.circle")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                if overtimeSummary.settings.inclusiveSalaryEnabled {
+                    Label("월 포괄수당은 주 포괄 시간 × 4.345주 × 추정 시급 × 연장 배율로 자동 산정합니다. 현재 \(formattedIncludedAllowance) \(overtimeSummary.currency)", systemImage: "sum")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                overtimeInputCard
+                Text(overtimeInputGuide)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                overtimeSettingsPanel
+
+                if overtimeSummary.records.isEmpty {
+                    Text("이번 달 연장 근무 기록이 없습니다.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    overtimeRecentRecords
+                }
+            }
+            .padding(.top, 8)
+        } label: {
+            HStack {
+                Label("연장 근무", systemImage: "clock.badge.exclamationmark")
+                    .font(.headline)
+                Spacer()
+                Text("\(overtimeSummary.totalHours)h · \(formattedAllowance) \(overtimeSummary.currency)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(Color(nsColor: .textBackgroundColor).opacity(0.62))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color(nsColor: .separatorColor).opacity(0.42))
+        )
+    }
+
+    private var overtimeSettingsPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            DisclosureGroup("계산 설정") {
+                if isOvertimeSettingsUnlocked {
+                    overtimeUnlockedSettings
+                } else {
+                    overtimeLockView
+                }
+                Text("실제 지급액은 회사 정책, 근로계약, 세전/세후 기준에 따라 달라질 수 있습니다.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var overtimeInputCard: some View {
+        HStack(alignment: .top, spacing: 14) {
+            overtimeCalendarCard
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Picker("", selection: $overtimeUsesTimeRange) {
+                        Text("시간 범위").tag(true)
+                        Text("총시간").tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 190)
+                    Spacer()
+                    if !editingOvertimeRecordID.isEmpty {
+                        Button("취소") {
+                            resetOvertimeForm()
+                        }
+                    }
+                    Button {
+                        Task { await saveOvertimeRecord() }
+                    } label: {
+                        Label(editingOvertimeRecordID.isEmpty ? "기록" : "수정", systemImage: editingOvertimeRecordID.isEmpty ? "plus" : "checkmark")
+                    }
+                    .disabled(runner.isRunning || !canSaveOvertimeRecord)
+                }
+
+                if overtimeUsesTimeRange {
+                    HStack(spacing: 10) {
+                        overtimeClockPicker("시작", hour: $overtimeStartHour, minute: $overtimeStartMinute)
+                        overtimeClockPicker("종료", hour: $overtimeEndHour, minute: $overtimeEndMinute)
+                    }
+                    Text("저장 시 야간(22:00-06:00)과 토/일 휴일 구간을 자동으로 나눕니다.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } else {
+                    HStack(spacing: 8) {
+                        TextField("총시간", text: $overtimeHours)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 90)
+                        Picker("구분", selection: $overtimeKind) {
+                            Text("연장").tag("overtime")
+                            Text("야간").tag("night")
+                            Text("휴일").tag("holiday")
+                        }
+                        .labelsHidden()
+                        .frame(width: 100)
+                    }
+                    Text("총시간만 기록할 때는 구분을 직접 선택합니다. 토/일은 휴일로 보정됩니다.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                TextField("사유 또는 메모", text: $overtimeMemo)
+                    .textFieldStyle(.roundedBorder)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.38))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    private var overtimeCalendarCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("근무일")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(formatKoreanDate(overtimeSelectedDate))
+                        .font(.caption.weight(.semibold))
+                }
+                Spacer()
+                Button {
+                    moveOvertimeMonth(-1)
+                } label: {
+                    Image(systemName: "chevron.left")
+                }
+                .buttonStyle(.plain)
+                Button {
+                    overtimeSelectedDate = Date()
+                    overtimeCalendarMonth = Date()
+                } label: {
+                    Text("오늘")
+                        .font(.caption2.weight(.semibold))
+                }
+                .buttonStyle(.plain)
+                Button {
+                    moveOvertimeMonth(1)
+                } label: {
+                    Image(systemName: "chevron.right")
+                }
+                .buttonStyle(.plain)
+            }
+
+            Text(formatMonth(overtimeCalendarMonth))
+                .font(.headline.weight(.semibold))
+
+            HStack(spacing: 4) {
+                ForEach(["일", "월", "화", "수", "목", "금", "토"], id: \.self) { symbol in
+                    Text(symbol)
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(symbol == "일" || symbol == "토" ? .secondary : .tertiary)
+                        .frame(width: 30)
+                }
+            }
+
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(30), spacing: 4), count: 7), spacing: 5) {
+                ForEach(Array(overtimeCalendarDays().enumerated()), id: \.offset) { _, day in
+                    overtimeCalendarDay(day)
+                }
+            }
+        }
+        .padding(12)
+        .frame(width: 270)
+        .background(
+            LinearGradient(
+                colors: [
+                    Color(nsColor: .controlBackgroundColor).opacity(0.76),
+                    Color(nsColor: .textBackgroundColor).opacity(0.46),
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color(nsColor: .separatorColor).opacity(0.38))
+        )
+    }
+
+    private func overtimeCalendarDay(_ day: Date?) -> some View {
+        Group {
+            if let day {
+                let selected = Calendar.current.isDate(day, inSameDayAs: overtimeSelectedDate)
+                let today = Calendar.current.isDateInToday(day)
+                let weekend = Calendar.current.isDateInWeekend(day)
+                Button {
+                    overtimeSelectedDate = day
+                } label: {
+                    Text("\(Calendar.current.component(.day, from: day))")
+                        .font(.caption.weight(selected ? .bold : .regular))
+                        .foregroundStyle(selected ? Color.white : (weekend ? Color.accentColor : Color.primary))
+                        .frame(width: 30, height: 26)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7)
+                                .fill(selected ? Color.accentColor : (today ? Color.accentColor.opacity(0.14) : Color.clear))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7)
+                                .stroke(today && !selected ? Color.accentColor.opacity(0.42) : Color.clear)
+                        )
+                }
+                .buttonStyle(.plain)
+                .help(formatKoreanDate(day))
+            } else {
+                Color.clear
+                    .frame(width: 30, height: 26)
+            }
+        }
+    }
+
+    private func overtimeClockPicker(_ title: String, hour: Binding<Int>, minute: Binding<Int>) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+            HStack(spacing: 4) {
+                Picker("시", selection: hour) {
+                    ForEach(0..<24, id: \.self) { value in
+                        Text(String(format: "%02d", value)).tag(value)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 58)
+                Text(":")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Picker("분", selection: minute) {
+                    ForEach([0, 10, 20, 30, 40, 50], id: \.self) { value in
+                        Text(String(format: "%02d", value)).tag(value)
+                    }
+                }
+                .labelsHidden()
+                .frame(width: 58)
+            }
+        }
+    }
+
+    private var overtimeLockView: some View {
+        HStack(spacing: 8) {
+            if overtimeSettingsPasscode.isEmpty {
+                SecureField("초기 설정 비밀번호", text: $overtimeNewPasscode)
+                    .textFieldStyle(.roundedBorder)
+                Button("설정") {
+                    overtimeSettingsPasscode = overtimeNewPasscode
+                    overtimeNewPasscode = ""
+                    isOvertimeSettingsUnlocked = true
+                }
+                .disabled(overtimeNewPasscode.count < 4)
+            } else {
+                SecureField("비밀번호", text: $overtimePasscodeInput)
+                    .textFieldStyle(.roundedBorder)
+                Button("열기") {
+                    isOvertimeSettingsUnlocked = overtimePasscodeInput == overtimeSettingsPasscode
+                    overtimePasscodeInput = ""
+                }
+                .disabled(overtimePasscodeInput.isEmpty)
+            }
+            Text("급여/근로계약 정보가 포함될 수 있어 잠가둡니다.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var overtimeUnlockedSettings: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle("포괄임금제 적용", isOn: $overtimeInclusiveSalaryEnabled)
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                overtimeField("시급", $overtimeHourlyRate, "0이면 월 기본급 또는 법정/통상 기준액을 209시간으로 나눠 추정합니다.")
+                overtimeField("연장 배율", $overtimeMultiplier, "일반 연장 근무 시간에 곱할 배율입니다. 예: 1.5")
+                overtimeField("야간 추가", $overtimeNightMultiplier, "야간 근무일 때 연장 배율에 더할 추가 배율입니다.")
+                overtimeField("휴일 추가", $overtimeHolidayMultiplier, "휴일 근무일 때 연장 배율에 더할 추가 배율입니다.")
+                overtimeField("반올림(분)", $overtimeRoundingMinutes, "기록 시간을 몇 분 단위로 반올림할지 정합니다.")
+                overtimeField("주 포괄 시간", $overtimeInclusiveWeeklyHours, "포괄임금에 포함된 주당 연장 근무 시간입니다.")
+                overtimeField("월 기본급", $overtimeBaseMonthlySalary, "근로계약상 월 기본급 또는 기준 급여를 기록합니다.")
+                overtimeField("월 포괄수당", $overtimeInclusiveOvertimePay, "참고용 계약 금액입니다. 계산에는 월 기본급과 주 포괄 시간으로 자동 산정한 값을 우선 사용합니다.")
+                overtimeField("법정/통상 기준액", $overtimeStatutoryBasePay, "법정 또는 통상임금 산정 기준으로 따로 관리할 금액입니다.")
+            }
+            HStack {
+                Button("잠그기") {
+                    isOvertimeSettingsUnlocked = false
+                }
+                Spacer()
+                Button("저장") {
+                    Task { await saveOvertimeSettings() }
+                }
+                .disabled(runner.isRunning || overtimeHourlyRate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+    }
+
+    private var overtimeRecentRecords: some View {
+        VStack(spacing: 6) {
+            ForEach(overtimeSummary.records.prefix(5)) { item in
+                HStack(spacing: 8) {
+                    Text(item.date)
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                    Text("\(item.hours)h")
+                        .font(.caption.weight(.semibold))
+                    if let range = overtimeTimeRange(item) {
+                        Text(range)
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(overtimeKindLabel(item.effectiveKind ?? item.kind))
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.accentColor.opacity(0.10))
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                    if item.autoClassified == true {
+                        Text("자동")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color(nsColor: .controlBackgroundColor).opacity(0.72))
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                    Text(item.memo.isEmpty ? "-" : item.memo)
+                        .font(.caption)
+                        .lineLimit(1)
+                    Spacer()
+                    Button {
+                        editOvertimeRecord(item)
+                    } label: {
+                        Image(systemName: "pencil")
+                    }
+                    .buttonStyle(.plain)
+                    .help("수정")
+                    Button {
+                        Task { await deleteOvertimeRecord(item) }
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .help("삭제")
+                }
+            }
+        }
+    }
+
+    private func overtimeMetric(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(8)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.58))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func overtimeField(_ title: String, _ text: Binding<String>, _ help: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+            TextField(title, text: text)
+                .textFieldStyle(.roundedBorder)
+            Text(help)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var formattedAllowance: String {
+        guard let value = Int(overtimeSummary.estimatedAllowance) else {
+            return overtimeSummary.estimatedAllowance
+        }
+        return value.formatted()
+    }
+
+    private var formattedEffectiveHourlyRate: String {
+        guard let rawValue = overtimeSummary.effectiveHourlyRate,
+              let value = Double(rawValue) else {
+            return "0"
+        }
+        return Int(value.rounded()).formatted()
+    }
+
+    private var formattedIncludedAllowance: String {
+        let rawValue = overtimeSummary.calculatedIncludedAllowance ?? overtimeSummary.includedAllowance
+        guard let value = Int(rawValue) else {
+            return rawValue
+        }
+        return value.formatted()
+    }
+
+    private var shouldShowOvertimeRateFallbackNotice: Bool {
+        let explicitRate = Double(overtimeSummary.settings.hourlyRate) ?? 0
+        let effectiveRate = Double(overtimeSummary.effectiveHourlyRate ?? "0") ?? 0
+        return explicitRate <= 0 && effectiveRate > 0
+    }
+
+    private var canSaveOvertimeRecord: Bool {
+        if overtimeUsesTimeRange {
+            return true
+        }
+        let hasHours = !overtimeHours.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return hasHours
+    }
+
+    private var overtimeInputGuide: String {
+        if overtimeUsesTimeRange {
+            return "캘린더와 시간 선택값으로 연장/야간/휴일을 자동 계산합니다."
+        }
+        return Calendar(identifier: .gregorian).isDateInWeekend(overtimeSelectedDate) ? "총시간만 넣어도 토/일 기록은 휴일 근로 배율로 자동 계산됩니다." : "총시간만 넣으면 선택한 구분 기준으로 계산됩니다."
+    }
+
+    private func syncOvertimeSettings() {
+        let settings = overtimeSummary.settings
+        overtimeHourlyRate = settings.hourlyRate
+        overtimeMultiplier = settings.overtimeMultiplier
+        overtimeNightMultiplier = settings.nightMultiplier
+        overtimeHolidayMultiplier = settings.holidayMultiplier
+        overtimeRoundingMinutes = "\(settings.roundingMinutes)"
+        overtimeInclusiveSalaryEnabled = settings.inclusiveSalaryEnabled
+        overtimeInclusiveWeeklyHours = settings.inclusiveWeeklyHours
+        overtimeBaseMonthlySalary = settings.baseMonthlySalary
+        overtimeInclusiveOvertimePay = settings.inclusiveOvertimePay
+        overtimeStatutoryBasePay = settings.statutoryBasePay
+    }
+
+    private func saveOvertimeRecord() async {
+        let startTime = overtimeUsesTimeRange ? formatClock(hour: overtimeStartHour, minute: overtimeStartMinute) : ""
+        let endTime = overtimeUsesTimeRange ? formatClock(hour: overtimeEndHour, minute: overtimeEndMinute) : ""
+        let recordDate = formatDate(overtimeSelectedDate)
+        let result: PASCommandResult
+        if editingOvertimeRecordID.isEmpty {
+            result = await runner.saveOvertimeRecord(
+                date: recordDate,
+                hours: overtimeUsesTimeRange ? "" : overtimeHours,
+                kind: overtimeKind,
+                startTime: startTime,
+                endTime: endTime,
+                memo: overtimeMemo
+            )
+        } else {
+            result = await runner.updateOvertimeRecord(
+                id: editingOvertimeRecordID,
+                date: recordDate,
+                hours: overtimeUsesTimeRange ? "" : overtimeHours,
+                kind: overtimeKind,
+                startTime: startTime,
+                endTime: endTime,
+                memo: overtimeMemo
+            )
+        }
+        lastMessage = result.displayText
+        showNotice(title: editingOvertimeRecordID.isEmpty ? "연장 근무 기록" : "연장 근무 수정", message: result.displayText, succeeded: result.succeeded)
+        if result.succeeded {
+            resetOvertimeForm()
+            overtimeSummary = await runner.loadOvertimeSummary()
+            syncOvertimeSettings()
+        }
+    }
+
+    private func deleteOvertimeRecord(_ item: OvertimeRecord) async {
+        let result = await runner.deleteOvertimeRecord(id: item.id)
+        lastMessage = result.displayText
+        showNotice(title: "연장 근무 삭제", message: result.displayText, succeeded: result.succeeded)
+        if result.succeeded {
+            if editingOvertimeRecordID == item.id {
+                resetOvertimeForm()
+            }
+            overtimeSummary = await runner.loadOvertimeSummary()
+            syncOvertimeSettings()
+        }
+    }
+
+    private func editOvertimeRecord(_ item: OvertimeRecord) {
+        editingOvertimeRecordID = item.id
+        if let date = parseDate(item.date) {
+            overtimeSelectedDate = date
+            overtimeCalendarMonth = date
+        }
+        overtimeMemo = item.memo
+        overtimeKind = item.kind
+        if let start = item.startTime, let end = item.endTime, !start.isEmpty, !end.isEmpty {
+            overtimeUsesTimeRange = true
+            applyClock(start, isStart: true)
+            applyClock(end, isStart: false)
+            overtimeHours = ""
+        } else {
+            overtimeUsesTimeRange = false
+            overtimeHours = item.hours
+        }
+    }
+
+    private func resetOvertimeForm() {
+        editingOvertimeRecordID = ""
+        overtimeHours = ""
+        overtimeMemo = ""
+    }
+
+    private func saveOvertimeSettings() async {
+        let result = await runner.saveOvertimeSettings(
+            hourlyRate: overtimeHourlyRate,
+            overtimeMultiplier: overtimeMultiplier,
+            nightMultiplier: overtimeNightMultiplier,
+            holidayMultiplier: overtimeHolidayMultiplier,
+            roundingMinutes: overtimeRoundingMinutes,
+            inclusiveSalaryEnabled: overtimeInclusiveSalaryEnabled,
+            inclusiveWeeklyHours: overtimeInclusiveWeeklyHours,
+            baseMonthlySalary: overtimeBaseMonthlySalary,
+            inclusiveOvertimePay: overtimeInclusiveOvertimePay,
+            statutoryBasePay: overtimeStatutoryBasePay
+        )
+        lastMessage = result.displayText
+        showNotice(title: "연장 수당 설정", message: result.displayText, succeeded: result.succeeded)
+        if result.succeeded {
+            overtimeSummary = await runner.loadOvertimeSummary()
+            syncOvertimeSettings()
+        }
+    }
+
+    private func overtimeKindLabel(_ value: String) -> String {
+        switch value {
+        case "holiday_night":
+            return "휴일·야간"
+        case "night":
+            return "야간"
+        case "holiday":
+            return "휴일"
+        default:
+            return "연장"
+        }
+    }
+
+    private func formatDate(_ value: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: value)
+    }
+
+    private func parseDate(_ value: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: value)
+    }
+
+    private func formatClock(hour: Int, minute: Int) -> String {
+        "\(String(format: "%02d", hour)):\(String(format: "%02d", minute))"
+    }
+
+    private func applyClock(_ value: String, isStart: Bool) {
+        let parts = value.split(separator: ":").compactMap { Int($0) }
+        guard parts.count == 2 else { return }
+        if isStart {
+            overtimeStartHour = min(23, max(0, parts[0]))
+            overtimeStartMinute = nearestTenMinute(parts[1])
+        } else {
+            overtimeEndHour = min(23, max(0, parts[0]))
+            overtimeEndMinute = nearestTenMinute(parts[1])
+        }
+    }
+
+    private func nearestTenMinute(_ value: Int) -> Int {
+        min(50, max(0, Int((Double(value) / 10.0).rounded()) * 10))
+    }
+
+    private func formatMonth(_ value: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "yyyy년 M월"
+        return formatter.string(from: value)
+    }
+
+    private func formatKoreanDate(_ value: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "M월 d일 EEEE"
+        return formatter.string(from: value)
+    }
+
+    private func moveOvertimeMonth(_ offset: Int) {
+        overtimeCalendarMonth = Calendar.current.date(byAdding: .month, value: offset, to: overtimeCalendarMonth) ?? overtimeCalendarMonth
+    }
+
+    private func overtimeCalendarDays() -> [Date?] {
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.year, .month], from: overtimeCalendarMonth)
+        guard let firstDay = calendar.date(from: components),
+              let dayRange = calendar.range(of: .day, in: .month, for: firstDay) else {
+            return []
+        }
+        let leadingBlanks = calendar.component(.weekday, from: firstDay) - 1
+        var days: [Date?] = Array(repeating: nil, count: leadingBlanks)
+        for day in dayRange {
+            var dateComponents = components
+            dateComponents.day = day
+            days.append(calendar.date(from: dateComponents))
+        }
+        while days.count % 7 != 0 {
+            days.append(nil)
+        }
+        return days
+    }
+
+    private func overtimeTimeRange(_ item: OvertimeRecord) -> String? {
+        guard let start = item.startTime, let end = item.endTime, !start.isEmpty, !end.isEmpty else {
+            return nil
+        }
+        return "\(start)-\(end)"
     }
 
     private func reports(on day: Int) -> [SubmittedReportRecord] {
