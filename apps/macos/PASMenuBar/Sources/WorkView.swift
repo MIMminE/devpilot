@@ -6,6 +6,16 @@ struct WorkView: View {
     @ObservedObject var runner: PASRunner
     private static let jiraKeyRegex = try? NSRegularExpression(pattern: #"[A-Z][A-Z0-9]+-\d+"#)
 
+    private struct RecordTimelineItem: Identifiable {
+        let id: String
+        let sortKey: String
+        let time: String
+        let title: String
+        let detail: String
+        let systemImage: String
+        let tint: Color
+    }
+
     @AppStorage("pas.work.appearance") private var appearance = "system"
     @AppStorage("pas.work.commandCenterExpanded") private var isCommandCenterExpanded = true
     @AppStorage("pas.work.repositoryOrder") private var repositoryOrderRaw = ""
@@ -54,7 +64,8 @@ struct WorkView: View {
     @State private var selectedWorkIssueKey = ""
     @State private var selectedIssueDetail = JiraIssueDetailRecord.empty
     @State private var isLoadingIssueDetail = false
-    @State private var recordsViewMode = "reports"
+    @State private var recordsViewMode = "timeline"
+    @State private var selectedRecordDate = Date()
     @State private var overtimeSummary = OvertimeSummaryRecord.empty
     @State private var overtimeSelectedDate = Date()
     @State private var overtimeCalendarMonth = Date()
@@ -145,6 +156,103 @@ struct WorkView: View {
 
     private var selectedReport: SubmittedReportRecord? {
         submittedReports.first { $0.id == selectedReportID } ?? submittedReports.first
+    }
+
+    private var selectedRecordDateString: String {
+        formatDate(selectedRecordDate)
+    }
+
+    private var selectedDayReports: [SubmittedReportRecord] {
+        submittedReports
+            .filter { $0.date == selectedRecordDateString }
+            .sorted { $0.submittedAt > $1.submittedAt }
+    }
+
+    private var selectedDayMemos: [WorkMemoRecord] {
+        workMemos
+            .filter { isSameRecordDate($0.date) || isSameRecordDate($0.createdAt) }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+
+    private var selectedDayJiraFlowItems: [JiraFlowItem] {
+        jiraTeamFlowItems.filter { item in
+            isSameRecordDate(item.created) || isSameRecordDate(item.updated) || isSameRecordDate(item.due)
+        }
+    }
+
+    private var selectedDayOvertimeRecords: [OvertimeRecord] {
+        overtimeSummary.records
+            .filter { $0.date == selectedRecordDateString }
+            .sorted { ($0.startTime ?? $0.createdAt) > ($1.startTime ?? $1.createdAt) }
+    }
+
+    private var selectedDayRepositoryWorkItems: [RecordTimelineItem] {
+        guard Calendar.current.isDateInToday(selectedRecordDate) else {
+            return []
+        }
+        return repositories.flatMap { repo in
+            repo.todayCommitLines.enumerated().map { index, line in
+                RecordTimelineItem(
+                    id: "repo-\(repo.path)-\(index)",
+                    sortKey: "23:\(String(format: "%02d", index))",
+                    time: "오늘",
+                    title: "\(repo.name) 작업",
+                    detail: line,
+                    systemImage: "chevron.left.forwardslash.chevron.right",
+                    tint: .green
+                )
+            }
+        }
+    }
+
+    private var recordTimelineItems: [RecordTimelineItem] {
+        let reportItems = selectedDayReports.map { report in
+            RecordTimelineItem(
+                id: "report-\(report.id)",
+                sortKey: report.submittedAt,
+                time: compactTimelineTime(report.submittedAt),
+                title: report.title,
+                detail: report.slackSent ? "앱과 Slack에 제출됨" : "앱 기록으로 제출됨",
+                systemImage: "doc.text.fill",
+                tint: .blue
+            )
+        }
+        let memoItems = selectedDayMemos.map { memo in
+            RecordTimelineItem(
+                id: "memo-\(memo.id)",
+                sortKey: memo.createdAt,
+                time: compactTimelineTime(memo.createdAt),
+                title: memo.targetTitle.isEmpty ? memo.targetID : memo.targetTitle,
+                detail: memo.text,
+                systemImage: "note.text",
+                tint: memo.targetType == "jira" ? .purple : .secondary
+            )
+        }
+        let jiraItems = selectedDayJiraFlowItems.map { item in
+            RecordTimelineItem(
+                id: "jira-\(item.id)",
+                sortKey: item.updated.isEmpty ? item.created : item.updated,
+                time: compactTimelineTime(item.updated.isEmpty ? item.created : item.updated),
+                title: "\(item.key) \(item.status)",
+                detail: item.title,
+                systemImage: item.isDone ? "checkmark.circle.fill" : "arrow.triangle.branch",
+                tint: flowTint(for: item.status)
+            )
+        }
+        let overtimeItems = selectedDayOvertimeRecords.map { record in
+            let timeRange = overtimeTimeRange(record) ?? compactTimelineTime(record.createdAt)
+            return RecordTimelineItem(
+                id: "overtime-\(record.id)",
+                sortKey: record.startTime ?? record.createdAt,
+                time: timeRange,
+                title: "\(overtimeKindLabel(record.effectiveKind ?? record.kind)) \(record.hours)h",
+                detail: record.memo.isEmpty ? "연장 근무 기록" : record.memo,
+                systemImage: "clock.badge.exclamationmark",
+                tint: .orange
+            )
+        }
+        return (reportItems + memoItems + jiraItems + overtimeItems + selectedDayRepositoryWorkItems)
+            .sorted { $0.sortKey > $1.sortKey }
     }
 
     private var currentMonthCalendarDays: [Int] {
@@ -1828,7 +1936,7 @@ struct WorkView: View {
             .disabled(runner.isRunning)
         } content: {
             VStack(alignment: .leading, spacing: 14) {
-                Text("제출된 보고서와 Jira 처리 흐름을 날짜별로 확인합니다.")
+                Text("보고서, 메모, Jira 흐름, 연장근무를 날짜별 작업 기록으로 모아 확인합니다.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -1838,6 +1946,7 @@ struct WorkView: View {
 
                     VStack(alignment: .leading, spacing: 12) {
                         Picker("기록", selection: $recordsViewMode) {
+                            Text("타임라인").tag("timeline")
                             Text("보고서").tag("reports")
                             Text("메모").tag("memos")
                             Text("Jira 흐름").tag("jira")
@@ -1861,6 +1970,8 @@ struct WorkView: View {
     @ViewBuilder
     private var recordsDetailContent: some View {
         switch recordsViewMode {
+        case "timeline":
+            recordsTimelineView
         case "memos":
             workMemoList
         case "jira":
@@ -1874,8 +1985,14 @@ struct WorkView: View {
 
     private var reportCalendarGrid: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(Date().formatted(.dateTime.year().month(.wide)))
-                .font(.headline)
+            HStack {
+                Text(Date().formatted(.dateTime.year().month(.wide)))
+                    .font(.headline)
+                Spacer()
+                Text(formatKoreanDate(selectedRecordDate))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
 
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 7), spacing: 6) {
                 ForEach(["일", "월", "화", "수", "목", "금", "토"], id: \.self) { day in
@@ -1887,6 +2004,9 @@ struct WorkView: View {
                 ForEach(currentMonthCalendarDays, id: \.self) { day in
                     let reports = reports(on: day)
                     Button {
+                        if let date = currentMonthDate(day: day) {
+                            selectedRecordDate = date
+                        }
                         if let first = reports.first {
                             selectedReportID = first.id
                         }
@@ -1910,18 +2030,24 @@ struct WorkView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
                     .buttonStyle(.plain)
-                    .disabled(day == 0 || reports.isEmpty)
-                    .help(reports.first?.title ?? "")
+                    .disabled(day == 0)
+                    .help(calendarDayHelp(day: day, reports: reports))
                 }
             }
 
-            if submittedReports.isEmpty {
-                EmptyDashboardState(systemImage: "tray", title: "제출된 보고서 없음", message: "보고서 탭에서 제출하면 이곳에 날짜별로 쌓입니다.")
-            } else {
+            recordDaySummaryStrip
+
+            if !submittedReports.isEmpty {
                 VStack(alignment: .leading, spacing: 7) {
+                    Text("최근 제출")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
                     ForEach(submittedReports.prefix(8)) { report in
                         Button {
                             selectedReportID = report.id
+                            if let date = parseDate(report.date) {
+                                selectedRecordDate = date
+                            }
                         } label: {
                             HStack(spacing: 8) {
                                 Text(report.date)
@@ -1953,6 +2079,107 @@ struct WorkView: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color(nsColor: .separatorColor).opacity(0.42))
         )
+    }
+
+    private var recordDaySummaryStrip: some View {
+        HStack(spacing: 6) {
+            recordSummaryPill(title: "보고서", value: "\(selectedDayReports.count)", tint: .blue)
+            recordSummaryPill(title: "메모", value: "\(selectedDayMemos.count)", tint: .purple)
+            recordSummaryPill(title: "Jira", value: "\(selectedDayJiraFlowItems.count)", tint: .green)
+            recordSummaryPill(title: "연장", value: "\(selectedDayOvertimeRecords.count)", tint: .orange)
+        }
+    }
+
+    private func recordSummaryPill(title: String, value: String, tint: Color) -> some View {
+        HStack(spacing: 4) {
+            Text(title)
+                .font(.caption2)
+            Text(value)
+                .font(.caption2.weight(.bold))
+                .monospacedDigit()
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(tint.opacity(0.10))
+        .clipShape(Capsule())
+    }
+
+    private var recordsTimelineView: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Label("작업 타임라인", systemImage: "list.bullet.rectangle")
+                        .font(.headline)
+                    Text("\(formatKoreanDate(selectedRecordDate)) · \(recordTimelineItems.count)개 기록")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button {
+                    selectedRecordDate = Date()
+                } label: {
+                    Label("오늘", systemImage: "calendar")
+                }
+                .buttonStyle(.bordered)
+            }
+
+            if recordTimelineItems.isEmpty {
+                EmptyDashboardState(systemImage: "calendar.badge.clock", title: "이 날짜의 기록 없음", message: "보고서 제출, 작업 메모, Jira 흐름, 연장근무 기록이 생기면 이곳에 시간순으로 모입니다.")
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        ForEach(recordTimelineItems) { item in
+                            timelineRecordRow(item)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+                .frame(minHeight: 240, maxHeight: 380)
+            }
+        }
+    }
+
+    private func timelineRecordRow(_ item: RecordTimelineItem) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(spacing: 4) {
+                Image(systemName: item.systemImage)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(item.tint)
+                    .frame(width: 22, height: 22)
+                    .background(item.tint.opacity(0.12))
+                    .clipShape(Circle())
+                Rectangle()
+                    .fill(Color(nsColor: .separatorColor).opacity(0.35))
+                    .frame(width: 1)
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 8) {
+                    Text(item.time.isEmpty ? "시간 -" : item.time)
+                        .font(.caption2.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(item.tint)
+                        .frame(width: 56, alignment: .leading)
+                    Text(item.title)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                    Spacer(minLength: 8)
+                }
+                Text(item.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(nsColor: .textBackgroundColor).opacity(0.58))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(item.tint.opacity(0.14))
+            )
+        }
     }
 
     private var selectedReportDetail: some View {
@@ -3021,9 +3248,33 @@ struct WorkView: View {
         return submittedReports.filter { $0.date == date }
     }
 
+    private func currentMonthDate(day: Int) -> Date? {
+        guard day > 0 else {
+            return nil
+        }
+        let calendar = Calendar.current
+        let components = calendar.dateComponents([.year, .month], from: Date())
+        return calendar.date(from: DateComponents(year: components.year, month: components.month, day: day))
+    }
+
+    private func calendarDayHelp(day: Int, reports: [SubmittedReportRecord]) -> String {
+        guard let date = currentMonthDate(day: day) else {
+            return ""
+        }
+        let dateText = formatKoreanDate(date)
+        if reports.isEmpty {
+            return dateText
+        }
+        return "\(dateText) · 보고서 \(reports.count)개"
+    }
+
     private func calendarDayBackground(day: Int, reports: [SubmittedReportRecord]) -> Color {
         guard day > 0 else {
             return Color.clear
+        }
+        if let date = currentMonthDate(day: day),
+           Calendar.current.isDate(date, inSameDayAs: selectedRecordDate) {
+            return Color.accentColor.opacity(0.18)
         }
         if reports.contains(where: { $0.id == selectedReportID }) {
             return Color.accentColor.opacity(0.18)
@@ -3032,6 +3283,25 @@ struct WorkView: View {
             return Color.accentColor.opacity(0.08)
         }
         return Color(nsColor: .controlBackgroundColor).opacity(0.55)
+    }
+
+    private func isSameRecordDate(_ value: String) -> Bool {
+        value.hasPrefix(selectedRecordDateString)
+    }
+
+    private func compactTimelineTime(_ value: String) -> String {
+        if value.count >= 16 {
+            let separator = value[value.index(value.startIndex, offsetBy: 10)]
+            if separator == "T" || separator == " " {
+                let start = value.index(value.startIndex, offsetBy: 11)
+                let end = value.index(value.startIndex, offsetBy: 16)
+                return String(value[start..<end])
+            }
+        }
+        if value.count >= 5, value.contains(":") {
+            return String(value.prefix(5))
+        }
+        return ""
     }
 
     private func refineReportWithCodex() async {
