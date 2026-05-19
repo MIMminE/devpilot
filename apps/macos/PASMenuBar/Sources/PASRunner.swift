@@ -1193,6 +1193,22 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         return summary
     }
 
+    func loadJiraIssueDetail(issue: String) async -> JiraIssueDetailRecord {
+        let key = issue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else {
+            return .empty
+        }
+        let result = await Self.executeDetached(["jira", "detail", key, "--format", "json"])
+        lastOutput = result.output
+        guard result.succeeded, let data = result.output.data(using: .utf8),
+              let detail = try? JSONDecoder().decode(JiraIssueDetailRecord.self, from: data) else {
+            status = "\(key) Jira 상세 조회 실패"
+            return .empty
+        }
+        status = "\(key) Jira 상세를 불러왔습니다"
+        return detail
+    }
+
     func saveOvertimeRecord(date: String, hours: String, kind: String, startTime: String, endTime: String, memo: String) async -> PASCommandResult {
         var arguments = ["overtime", "add", "--date", date, "--hours", hours, "--kind", kind, "--memo", memo]
         if !startTime.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !endTime.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -2012,6 +2028,90 @@ struct WorkMemoRecord: Identifiable, Codable, Hashable {
         case targetTitle = "target_title"
         case text
     }
+}
+
+struct JiraIssueDetailRecord: Codable, Hashable {
+    let key: String
+    let url: String
+    let summary: String
+    let status: String
+    let priority: String
+    let issueType: String
+    let project: String
+    let assignee: String
+    let reporter: String
+    let created: String
+    let updated: String
+    let due: String
+    let description: String
+    let attachments: [JiraIssueAttachmentRecord]
+    let comments: [JiraIssueCommentRecord]
+
+    enum CodingKeys: String, CodingKey {
+        case key
+        case url
+        case summary
+        case status
+        case priority
+        case issueType = "issue_type"
+        case project
+        case assignee
+        case reporter
+        case created
+        case updated
+        case due
+        case description
+        case attachments
+        case comments
+    }
+
+    static let empty = JiraIssueDetailRecord(
+        key: "",
+        url: "",
+        summary: "",
+        status: "",
+        priority: "",
+        issueType: "",
+        project: "",
+        assignee: "",
+        reporter: "",
+        created: "",
+        updated: "",
+        due: "",
+        description: "",
+        attachments: [],
+        comments: []
+    )
+}
+
+struct JiraIssueAttachmentRecord: Identifiable, Codable, Hashable {
+    let id: String
+    let filename: String
+    let mimeType: String
+    let size: Int
+    let contentURL: String
+    let thumbnailURL: String
+    let created: String
+    let author: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case filename
+        case mimeType = "mime_type"
+        case size
+        case contentURL = "content_url"
+        case thumbnailURL = "thumbnail_url"
+        case created
+        case author
+    }
+}
+
+struct JiraIssueCommentRecord: Identifiable, Codable, Hashable {
+    let id: String
+    let author: String
+    let created: String
+    let updated: String
+    let body: String
 }
 
 struct OvertimeSummaryRecord: Codable, Hashable {

@@ -34,7 +34,7 @@ from pas_automation.features.issue_repositories import (
 )
 from pas_automation.features.jira_daily import assign_issue, format_today_items
 from pas_automation.features.jira_flow import team_flow
-from pas_automation.features.jira_issues import create_issue
+from pas_automation.features.jira_issues import create_issue, issue_detail
 from pas_automation.features.jira_issue_watch import check_new_issues
 from pas_automation.features.overtime import (
     add_overtime_record,
@@ -89,6 +89,10 @@ def build_parser() -> argparse.ArgumentParser:
     jira_create.add_argument("--labels", default="", help="쉼표로 구분한 label 목록")
     jira_create.add_argument("--project", default="", help="프로젝트 키. 비우면 기본 프로젝트")
     jira_create.add_argument("--dry-run", action="store_true", help="생성 없이 입력값만 확인")
+
+    jira_detail = jira_sub.add_parser("detail", help="Jira 일감 상세/첨부/댓글 조회")
+    jira_detail.add_argument("issue_key", help="Jira 이슈 키")
+    jira_detail.add_argument("--format", choices=["json", "text"], default="json", help="출력 형식")
 
     jira_link_repo = jira_sub.add_parser("link-repo", help="Jira 일감과 관리 중인 repository 연결")
     jira_link_repo.add_argument("issue_key", help="Jira 이슈 키")
@@ -383,6 +387,10 @@ def main(argv: list[str] | None = None) -> int:
                 dry_run=args.dry_run,
             )
         )
+        return 0
+
+    if args.area == "jira" and args.command == "detail":
+        print(issue_detail(config, args.issue_key, output_format=args.format))
         return 0
 
     if args.area == "jira" and args.command == "link-repo":

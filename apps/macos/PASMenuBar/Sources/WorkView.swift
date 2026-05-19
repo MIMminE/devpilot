@@ -50,6 +50,8 @@ struct WorkView: View {
     @State private var workMemos: [WorkMemoRecord] = []
     @State private var codexHealth = CodexHealthStatus.unknown
     @State private var selectedWorkIssueKey = ""
+    @State private var selectedIssueDetail = JiraIssueDetailRecord.empty
+    @State private var isLoadingIssueDetail = false
     @State private var recordsViewMode = "reports"
     @State private var overtimeSummary = OvertimeSummaryRecord.empty
     @State private var overtimeSelectedDate = Date()
@@ -626,6 +628,7 @@ struct WorkView: View {
                     }
 
                     issueStartFlowPanel
+                    jiraIssueDetailPanel
 
                     ScrollView {
                         LazyVStack(spacing: 10) {
@@ -702,6 +705,134 @@ struct WorkView: View {
         .onAppear {
             if selectedWorkIssueKey.isEmpty {
                 selectedWorkIssueKey = jiraMorningItems.first?.key ?? ""
+            }
+            Task { await loadSelectedIssueDetailIfNeeded(force: false) }
+        }
+        .onChange(of: selectedWorkIssueKey) { _ in
+            Task { await loadSelectedIssueDetailIfNeeded(force: true) }
+        }
+    }
+
+    private var jiraIssueDetailPanel: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Label("기획 자료", systemImage: "rectangle.and.text.magnifyingglass")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                if isLoadingIssueDetail {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+                Button {
+                    Task { await loadSelectedIssueDetailIfNeeded(force: true) }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+                .disabled(isLoadingIssueDetail || selectedWorkIssueKey.isEmpty)
+                .help("Jira 상세 새로고침")
+                if !selectedIssueDetail.url.isEmpty {
+                    Button {
+                        runner.openExternalURL(selectedIssueDetail.url)
+                    } label: {
+                        Image(systemName: "arrow.up.right.square")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Jira에서 열기")
+                }
+            }
+
+            if selectedWorkIssueKey.isEmpty {
+                EmptyDashboardState(systemImage: "checklist", title: "선택된 일감 없음", message: "일감을 선택하면 기획 본문, 댓글, 첨부를 보여줍니다.")
+            } else if selectedIssueDetail.key.isEmpty && !isLoadingIssueDetail {
+                EmptyDashboardState(systemImage: "doc.text.magnifyingglass", title: "상세 정보 대기", message: "새로고침을 누르면 Jira 상세와 첨부 목록을 불러옵니다.")
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 7) {
+                        flowTag(selectedIssueDetail.status.isEmpty ? "상태 -" : selectedIssueDetail.status, tint: flowTint(for: selectedIssueDetail.status))
+                        flowTag(selectedIssueDetail.priority.isEmpty ? "우선순위 -" : selectedIssueDetail.priority, tint: .orange)
+                        flowTag(selectedIssueDetail.assignee.isEmpty ? "담당 -" : selectedIssueDetail.assignee, tint: .blue)
+                        Spacer(minLength: 0)
+                    }
+
+                    Text(selectedIssueDetail.description.isEmpty ? "기획 본문이 비어 있습니다." : selectedIssueDetail.description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(5)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    if !selectedIssueDetail.attachments.isEmpty {
+                        jiraAttachmentList
+                    }
+
+                    if !selectedIssueDetail.comments.isEmpty {
+                        jiraCommentList
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.42))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var jiraAttachmentList: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("첨부 \(selectedIssueDetail.attachments.count)개")
+                .font(.caption.weight(.semibold))
+            ForEach(selectedIssueDetail.attachments.prefix(6)) { item in
+                HStack(spacing: 8) {
+                    Image(systemName: item.mimeType.hasPrefix("image/") ? "photo" : "paperclip")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: 18)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(item.filename.isEmpty ? "첨부 파일" : item.filename)
+                            .font(.caption.weight(.semibold))
+                            .lineLimit(1)
+                        Text([item.mimeType, formattedFileSize(item.size), item.author].filter { !$0.isEmpty }.joined(separator: " · "))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    Button("열기") {
+                        runner.openExternalURL(item.contentURL)
+                    }
+                    .disabled(item.contentURL.isEmpty)
+                    .controlSize(.small)
+                }
+                .padding(7)
+                .background(Color(nsColor: .textBackgroundColor).opacity(0.46))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+        }
+    }
+
+    private var jiraCommentList: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text("최근 댓글")
+                .font(.caption.weight(.semibold))
+            ForEach(selectedIssueDetail.comments.prefix(3)) { item in
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(item.author.isEmpty ? "작성자 -" : item.author)
+                            .font(.caption2.weight(.semibold))
+                        Text(item.updated.isEmpty ? item.created : item.updated)
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(item.body)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                        .textSelection(.enabled)
+                }
+                .padding(7)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color(nsColor: .textBackgroundColor).opacity(0.46))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
     }
@@ -2069,6 +2200,37 @@ struct WorkView: View {
 
     private func needsRepositorySelection(_ message: String) -> Bool {
         PASRunner.needsRepositorySelection(message)
+    }
+
+    private func loadSelectedIssueDetailIfNeeded(force: Bool) async {
+        guard !runner.isPersonalProfile else {
+            selectedIssueDetail = .empty
+            return
+        }
+        let key = selectedWorkIssue?.key ?? selectedWorkIssueKey
+        guard !key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            selectedIssueDetail = .empty
+            return
+        }
+        if !force, selectedIssueDetail.key == key {
+            return
+        }
+        isLoadingIssueDetail = true
+        selectedIssueDetail = await runner.loadJiraIssueDetail(issue: key)
+        isLoadingIssueDetail = false
+    }
+
+    private func formattedFileSize(_ value: Int) -> String {
+        guard value > 0 else {
+            return ""
+        }
+        if value >= 1_000_000 {
+            return String(format: "%.1f MB", Double(value) / 1_000_000.0)
+        }
+        if value >= 1_000 {
+            return String(format: "%.0f KB", Double(value) / 1_000.0)
+        }
+        return "\(value) B"
     }
 
     private func recommendIssueRepository(_ item: JiraListItem) async {
