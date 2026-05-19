@@ -1083,6 +1083,7 @@ struct WorkNoticeView: View {
     @Environment(\.dismiss) private var dismiss
     let notice: WorkNotice
     @State private var didCopy = false
+    @State private var isRawOutputExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -1107,8 +1108,18 @@ struct WorkNoticeView: View {
                 Spacer()
             }
 
-            ResultOutputView(output: notice.message, maxHeight: 320)
-                .frame(minHeight: 150)
+            if notice.succeeded {
+                ResultOutputView(output: notice.message, maxHeight: 320)
+                    .frame(minHeight: 150)
+            } else {
+                WorkNoticeDiagnosticView(message: notice.message)
+
+                DisclosureGroup("원문 오류 보기", isExpanded: $isRawOutputExpanded) {
+                    ResultOutputView(output: notice.message, maxHeight: 260)
+                        .frame(minHeight: 140)
+                        .padding(.top, 8)
+                }
+            }
 
             HStack {
                 Button {
@@ -1138,6 +1149,107 @@ struct WorkNoticeView: View {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(notice.message, forType: .string)
         didCopy = true
+    }
+}
+
+struct WorkNoticeDiagnosticView: View {
+    let message: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 9) {
+                Image(systemName: "stethoscope")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.orange)
+                    .frame(width: 22)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                    Text(guide)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            if !cause.isEmpty {
+                Text(cause)
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    .padding(9)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(nsColor: .textBackgroundColor).opacity(0.62))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+        }
+        .padding(12)
+        .background(Color.orange.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.orange.opacity(0.22))
+        )
+    }
+
+    private var title: String {
+        if message.contains("Jira API 토큰") || message.contains("Unauthorized") || message.contains("401") {
+            return "Jira 인증을 확인해야 합니다"
+        }
+        if PASRunner.needsRepositorySelection(message) {
+            return "작업할 repository 선택이 필요합니다"
+        }
+        if message.contains("Codex CLI") || message.contains("codex") {
+            return "Codex 실행 상태를 확인해야 합니다"
+        }
+        if message.contains("dirty") || message.contains("미커밋") || message.contains("commit 또는 stash") {
+            return "로컬 변경 정리가 필요합니다"
+        }
+        if message.contains("Slack") || message.contains("chat.postMessage") {
+            return "Slack 전송 설정을 확인해야 합니다"
+        }
+        if message.contains("Traceback") {
+            return "명령 실행 중 예외가 발생했습니다"
+        }
+        return "작업을 완료하지 못했습니다"
+    }
+
+    private var guide: String {
+        if message.contains("Jira API 토큰") || message.contains("Unauthorized") || message.contains("401") {
+            return "설정의 Jira URL, 이메일, API Token이 유효한지 확인해 주세요. 토큰을 갱신했다면 설정 저장 후 다시 시도하면 됩니다."
+        }
+        if PASRunner.needsRepositorySelection(message) {
+            return "이 Jira 일감과 연결된 저장소가 없거나 여러 개입니다. repository 연결 창에서 작업할 저장소를 선택한 뒤 다시 시작하세요."
+        }
+        if message.contains("Codex CLI") || message.contains("codex") {
+            return "Codex CLI 설치/로그인 상태를 확인해 주세요. 대시보드 상단의 Codex 상태 칩으로 다시 점검할 수 있습니다."
+        }
+        if message.contains("dirty") || message.contains("미커밋") || message.contains("commit 또는 stash") {
+            return "작업 전 변경분을 커밋하거나 stash 해야 합니다. 변경 파일이 의도한 것인지 먼저 확인하세요."
+        }
+        if message.contains("Slack") || message.contains("chat.postMessage") {
+            return "Slack Bot Token과 전송 채널 권한을 확인해 주세요. 앱 기록은 남기고 Slack 전송만 다시 시도할 수 있습니다."
+        }
+        if message.contains("Traceback") {
+            return "아래 요약 원인을 먼저 보고, 필요하면 원문 오류를 펼쳐 복사해 주세요."
+        }
+        return "아래 원문 오류를 확인해 원인을 파악하세요. 복사 버튼으로 전체 내용을 남길 수 있습니다."
+    }
+
+    private var cause: String {
+        let lines = message
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        if let runtime = lines.last(where: { $0.contains("RuntimeError:") }) {
+            return runtime
+        }
+        if let last = lines.last {
+            return last
+        }
+        return ""
     }
 }
 
