@@ -1427,7 +1427,7 @@ struct WorkView: View {
                                 Text(displayRepoName(repo))
                                     .font(.caption.weight(.semibold))
                                     .lineLimit(1)
-                                Text(repo.branch)
+                                Text(privacyMaskEnabled ? "feature/DEMO-123" : repo.branch)
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)

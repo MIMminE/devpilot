@@ -49,25 +49,19 @@ flowchart LR
 
 PAS의 핵심은 명령 실행 자체가 아니라, 명령 주변의 맥락을 함께 보존하는 것입니다. 어떤 Jira 일감에서 시작했는지, 어떤 저장소가 연결되었는지, 어떤 브랜치가 만들어졌는지, 오늘 어떤 커밋이 있었는지, 어떤 보고서를 제출했는지를 하나의 흐름으로 이어갑니다.
 
-## 화면 캡처와 사용 매뉴얼 구성
+## 화면 캡처와 사용 설명서
 
-포트폴리오용 문서에서는 실제 앱 화면 캡처를 함께 사용하는 것이 좋습니다. 추천 캡처 항목은 다음과 같습니다.
+실제 앱 화면을 기준으로 한 사용 설명서는 [`docs/USER_MANUAL.md`](docs/USER_MANUAL.md)에 정리했습니다. 공개용 캡처는 앱의 `마스킹` 모드를 켠 상태로 촬영해 Jira 키, 저장소명, 사람 이름, 커밋 메시지 같은 업무 정보를 샘플 값으로 대체했습니다.
 
-| 화면 | 추천 파일명 | 보여줄 내용 |
+| 화면 | 캡처 | 보여줄 내용 |
 |---|---|---|
-| 메인 대시보드 | `docs/portfolio/screenshots/dashboard.png` | 오늘 상황판, Codex 상태, Jira/저장소 요약 |
-| Jira 작업 흐름 | `docs/portfolio/screenshots/jira-workflow.png` | 일감 카드, 작업 상태 배지, 시작 버튼, 저장소 연결 |
-| 저장소 상태 | `docs/portfolio/screenshots/repositories.png` | 기준 브랜치, 작업 브랜치, 오늘 커밋, PR/릴리즈 |
-| 보고서 화면 | `docs/portfolio/screenshots/report.png` | 초안 생성, Codex 다듬기, 제출 흐름 |
-| 기록 타임라인 | `docs/portfolio/screenshots/records.png` | 날짜별 보고서/메모/Jira/연장근무 기록 |
-| 설정 화면 | `docs/portfolio/screenshots/settings.png` | 프로필, 저장소, 연동, 고급 설정 구조 |
+| 대시보드 | [`pas-dashboard.png`](docs/assets/screenshots/pas-dashboard.png) | 오늘 상황판, Codex 상태, Jira/저장소 요약 |
+| 작업 | [`pas-work.png`](docs/assets/screenshots/pas-work.png) | Jira 일감 선택, 기획 자료, 작업 시작 흐름 |
+| 저장소 | [`pas-repositories.png`](docs/assets/screenshots/pas-repositories.png) | 기준 브랜치, 작업 브랜치, 오늘 커밋, PR/릴리즈 |
+| 보고서 | [`pas-report.png`](docs/assets/screenshots/pas-report.png) | 초안 생성, Codex 다듬기, 제출 흐름 |
+| 기록 | [`pas-records.png`](docs/assets/screenshots/pas-records.png) | 날짜별 보고서/메모/Jira/연장근무 기록 |
 
-공개용 캡처를 만들 때는 아래 정보는 반드시 가리거나 대체해야 합니다.
-
-- 회사명, 내부 프로젝트명, Jira 도메인, 실제 일감 제목
-- 개인 이메일, 로컬 파일 경로
-- Slack 채널명, 비공개 저장소명, 토큰, API 키
-- 업무상 민감한 댓글, 첨부, 보고서 내용
+설정 화면처럼 이메일, 토큰, 로컬 경로가 직접 보일 수 있는 화면은 공개용 캡처에서 제외합니다.
 
 ## 제품 구성
 

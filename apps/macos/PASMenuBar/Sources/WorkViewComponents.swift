@@ -469,11 +469,11 @@ struct RepositoryDashboardRow: View {
             repoSnapshotGrid
 
             if !repo.autoSyncMessage.isEmpty {
-                AutoSyncNotice(message: repo.autoSyncMessage, summary: autoSyncSummary)
+                AutoSyncNotice(message: displayRepoMessage(repo.autoSyncMessage), summary: displayRepoMessage(autoSyncSummary))
             } else if shouldShowGuidance {
                 RepoGuidanceView(
                     title: guidanceTitle,
-                    message: guidanceMessage,
+                    message: displayRepoMessage(guidanceMessage),
                     color: statusColor
                 )
             }
@@ -526,7 +526,7 @@ struct RepositoryDashboardRow: View {
             RepoStatusBadge(text: repo.syncLabel, color: statusColor)
             RepoStatusBadge(text: isPrivacyMasked ? "기준 브랜치 sample-base" : repo.baseLabel, color: repo.needsBaseRebase ? .red : .blue)
             if !repo.autoSyncLabel.isEmpty {
-                RepoStatusBadge(text: repo.autoSyncLabel, color: .green, helpText: repo.autoSyncMessage)
+                RepoStatusBadge(text: repo.autoSyncLabel, color: .green, helpText: displayRepoMessage(repo.autoSyncMessage))
             }
             if repo.dirtyCount > 0 {
                 RepoStatusBadge(text: "변경 \(repo.dirtyCount)", color: .orange)
@@ -551,7 +551,7 @@ struct RepositoryDashboardRow: View {
                 Spacer(minLength: 0)
             }
 
-            Text(statusSubtitle)
+            Text(displayRepoMessage(statusSubtitle))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
@@ -597,6 +597,25 @@ struct RepositoryDashboardRow: View {
             with: "DEMO-123",
             options: .regularExpression
         )
+    }
+
+    private func displayRepoMessage(_ message: String) -> String {
+        guard isPrivacyMasked else { return message }
+        var result = message
+        result = result.replacingOccurrences(
+            of: #"[A-Z][A-Z0-9]+-\d+"#,
+            with: "DEMO-123",
+            options: .regularExpression
+        )
+        result = result.replacingOccurrences(of: repo.name, with: displayRepoName)
+        result = result.replacingOccurrences(of: repo.path, with: "/Users/dev/workspace/sample-repo")
+        result = result.replacingOccurrences(of: repo.baseBranch, with: "sample-base")
+        result = result.replacingOccurrences(
+            of: #"(src|app|pages|components|features|lib|tests)/[A-Za-z0-9_./-]+"#,
+            with: "src/sample/file.swift",
+            options: .regularExpression
+        )
+        return result
     }
 
     private var riskLevel: String {
