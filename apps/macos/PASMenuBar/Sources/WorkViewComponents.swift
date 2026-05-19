@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct StatusPill: View {
@@ -1081,6 +1082,7 @@ struct WorkNotice: Identifiable {
 struct WorkNoticeView: View {
     @Environment(\.dismiss) private var dismiss
     let notice: WorkNotice
+    @State private var didCopy = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -1109,6 +1111,14 @@ struct WorkNoticeView: View {
                 .frame(minHeight: 150)
 
             HStack {
+                Button {
+                    copyNoticeMessage()
+                } label: {
+                    Label(didCopy ? "복사됨" : "전체 소스 복사", systemImage: didCopy ? "checkmark" : "doc.on.doc")
+                }
+                .disabled(notice.message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .help("오류 메시지 원문 전체를 클립보드에 복사")
+
                 Spacer()
                 Button("닫기") {
                     dismiss()
@@ -1122,6 +1132,12 @@ struct WorkNoticeView: View {
 
     private var noticeColor: Color {
         notice.succeeded ? .green : .red
+    }
+
+    private func copyNoticeMessage() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(notice.message, forType: .string)
+        didCopy = true
     }
 }
 

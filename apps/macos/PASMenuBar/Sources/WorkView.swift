@@ -2040,10 +2040,14 @@ struct WorkView: View {
     private func startIssueWork(_ item: JiraListItem) async {
         let result = await runner.startIssueWork(issue: item.key, summary: item.title)
         lastMessage = result.displayText
-        showNotice(title: "\(item.key) 작업 시작", message: result.displayText, succeeded: result.succeeded)
         if result.succeeded {
+            showNotice(title: "\(item.key) 작업 시작", message: result.displayText, succeeded: true)
             rememberBriefing("\(item.key) repository 연결 및 브랜치 시작")
             await reload()
+        } else if needsRepositorySelection(result.displayText) {
+            runner.openIssueRepositoryLinkWindow(issue: item.key, summary: item.title)
+        } else {
+            showNotice(title: "\(item.key) 작업 시작", message: result.displayText, succeeded: false)
         }
     }
 
@@ -2051,12 +2055,20 @@ struct WorkView: View {
         selectedWorkIssueKey = item.key
         let result = await runner.startIssueWork(issue: item.key, summary: item.title)
         lastMessage = result.displayText
-        showNotice(title: "\(item.key) 작업 시작", message: result.displayText, succeeded: result.succeeded)
         if result.succeeded {
+            showNotice(title: "\(item.key) 작업 시작", message: result.displayText, succeeded: true)
             rememberBriefing("\(item.key) 저장소 연결, 브랜치 생성, Codex 작업 요청")
             await reload()
             await openCodexWorkspace(item)
+        } else if needsRepositorySelection(result.displayText) {
+            runner.openIssueRepositoryLinkWindow(issue: item.key, summary: item.title)
+        } else {
+            showNotice(title: "\(item.key) 작업 시작", message: result.displayText, succeeded: false)
         }
+    }
+
+    private func needsRepositorySelection(_ message: String) -> Bool {
+        PASRunner.needsRepositorySelection(message)
     }
 
     private func recommendIssueRepository(_ item: JiraListItem) async {

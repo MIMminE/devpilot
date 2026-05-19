@@ -743,7 +743,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         lastOutput = result.output
         status = result.succeeded ? "\(issue) 작업 준비 완료" : "\(issue) 작업 준비 실패"
         isRunning = false
-        if !result.succeeded {
+        if !result.succeeded && !Self.needsRepositorySelection(result.output.isEmpty ? result.summary : result.output) {
             openOutputWindow(title: "Jira 작업 시작 오류", output: result.output.isEmpty ? result.summary : result.output)
         }
         return PASCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
@@ -1682,6 +1682,12 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
             .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .filter { !$0.hasPrefix("WARNING:") }
+    }
+
+    nonisolated static func needsRepositorySelection(_ message: String) -> Bool {
+        message.contains("repository를 자동 결정하지 못했습니다") ||
+        message.contains("--repo로 작업할 repository를 지정") ||
+        message.contains("여러 repository가 연결되어 있습니다")
     }
 
     private nonisolated static func parseJiraMemoTargets(_ output: String) -> [MemoTargetOption] {

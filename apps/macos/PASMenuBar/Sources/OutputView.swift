@@ -1,18 +1,40 @@
-﻿import SwiftUI
+﻿import AppKit
+import SwiftUI
 
 struct OutputView: View {
     let output: String
+    @State private var didCopy = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("실행 결과")
-                .font(.headline)
+            HStack(alignment: .firstTextBaseline) {
+                Text("실행 결과")
+                    .font(.headline)
+
+                Spacer()
+
+                Button {
+                    copyOutput()
+                } label: {
+                    Label(didCopy ? "복사됨" : "전체 소스 복사", systemImage: didCopy ? "checkmark" : "doc.on.doc")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .help("오류 메시지 원문 전체를 클립보드에 복사")
+            }
 
             ResultOutputView(output: output)
                 .frame(minHeight: 360)
         }
         .padding(16)
         .frame(minWidth: 620, minHeight: 420)
+    }
+
+    private func copyOutput() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(output, forType: .string)
+        didCopy = true
     }
 }
 
@@ -192,4 +214,3 @@ private struct ResultOutputRow: Identifiable {
         return parts.dropFirst().joined(separator: ":").trimmingCharacters(in: .whitespaces)
     }
 }
-
