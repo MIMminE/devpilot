@@ -77,7 +77,10 @@ struct SettingsSection<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            content
+                .padding(.top, 8)
+        } label: {
             HStack(spacing: 10) {
                 Image(systemName: systemImage)
                     .font(.system(size: 15, weight: .semibold))
@@ -95,8 +98,6 @@ struct SettingsSection<Content: View>: View {
 
                 Spacer()
             }
-
-            content
         }
         .padding(12)
         .background(Color(nsColor: .controlBackgroundColor))

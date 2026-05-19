@@ -70,9 +70,12 @@ struct SetupView: View {
     @State private var isLoadingRemoteRepositories = false
     @State private var isCloningRemoteRepositories = false
     @State private var isCheckingGitHubAuth = false
+    @State private var isProfileExpanded = true
+    @State private var isBasicPreferencesExpanded = true
+    @State private var isRepositoryExpanded = true
+    @State private var isAPIExpanded = false
     @State private var isSlackExpanded = false
     @State private var isJiraExpanded = false
-    @State private var isDeveloperExpanded = true
     @State private var isAutomationExpanded = false
     @State private var isTestExpanded = false
     @State private var selectedSettingsSection = "basic"
@@ -162,32 +165,36 @@ struct SetupView: View {
         case "basic":
             VStack(alignment: .leading, spacing: 12) {
                 profileSection
-                developerSection
+                basicPreferencesSection
             }
+        case "repositories":
+            repositorySection
         case "integrations":
             if runner.isPersonalProfile {
-                developerSection
+                apiSection
             } else {
                 VStack(alignment: .leading, spacing: 12) {
                     jiraSection
                     slackSection
+                    apiSection
                 }
             }
         case "automation":
-            if runner.isPersonalProfile { developerSection } else { automationSection }
+            if runner.isPersonalProfile { apiSection } else { automationSection }
         case "test":
             testSection
         default:
             VStack(alignment: .leading, spacing: 12) {
                 profileSection
-                developerSection
+                basicPreferencesSection
             }
         }
     }
 
     private var availableSettingsSections: [SettingsSidebarItem] {
         var items: [SettingsSidebarItem] = [
-            SettingsSidebarItem(id: "basic", title: "기본", systemImage: "slider.horizontal.3")
+            SettingsSidebarItem(id: "basic", title: "기본", systemImage: "slider.horizontal.3"),
+            SettingsSidebarItem(id: "repositories", title: "저장소", systemImage: "externaldrive.connected.to.line.below")
         ]
         if !runner.isPersonalProfile {
             items.append(SettingsSidebarItem(id: "integrations", title: "연동", systemImage: "point.3.connected.trianglepath.dotted"))
@@ -202,7 +209,7 @@ struct SetupView: View {
             title: "프로필 활성 관리",
             summary: "준비된 프로필만 워크스페이스 전환 메뉴에 표시합니다.",
             systemImage: "person.2",
-            isExpanded: $isDeveloperExpanded
+            isExpanded: $isProfileExpanded
         ) {
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(PASProfile.all) { profile in
@@ -365,19 +372,48 @@ struct SetupView: View {
         }
     }
 
-    private var developerSection: some View {
+    private var basicPreferencesSection: some View {
         SettingsSection(
-            title: "개발자 비서 확장",
-            summary: "gh CLI로 GitHub repository를 가져오고 AI 보고서 옵션을 설정합니다.",
-            systemImage: "terminal",
-            isExpanded: $isDeveloperExpanded
+            title: "기본 사용 설정",
+            summary: "매일 쓰는 작성자, IDE, 화면 표시 옵션만 둡니다.",
+            systemImage: "gearshape",
+            isExpanded: $isBasicPreferencesExpanded
         ) {
             VStack(alignment: .leading, spacing: 10) {
                 SettingsTextField(title: "Git 작성자", placeholder: "git user.name 또는 email", text: $settings.gitAuthor)
                 SettingsTextField(title: "퇴근 기준 시간", placeholder: "18:00", text: $settings.workEndTime)
-                SettingsSecureField(title: "OpenAI API Key", placeholder: "Git 보고서 AI 요약 사용 시 입력", text: $settings.openAIKey)
                 idePicker
                 workDashboardPicker
+            }
+            .padding(.vertical, 6)
+        }
+    }
+
+    private var apiSection: some View {
+        SettingsSection(
+            title: "AI/API 키",
+            summary: "외부 AI API를 쓸 때만 입력합니다. Codex 구독 기반 작업은 별도 키 없이 사용할 수 있습니다.",
+            systemImage: "key",
+            isExpanded: $isAPIExpanded
+        ) {
+            VStack(alignment: .leading, spacing: 10) {
+                SettingsSecureField(title: "OpenAI API Key", placeholder: "Git 보고서 AI 요약 사용 시 입력", text: $settings.openAIKey)
+                Text("기본 보고서 초안과 Codex 다듬기는 앱 기록을 기반으로 동작합니다. OpenAI API Key는 API 호출형 요약 기능을 별도로 쓸 때만 필요합니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 6)
+        }
+    }
+
+    private var repositorySection: some View {
+        SettingsSection(
+            title: "저장소 관리",
+            summary: "gh CLI로 GitHub repository를 가져오고 기준 브랜치를 지정합니다.",
+            systemImage: "externaldrive.connected.to.line.below",
+            isExpanded: $isRepositoryExpanded
+        ) {
+            VStack(alignment: .leading, spacing: 10) {
 
                 Text("GitHub CLI 로그인 상태로 접근 가능한 repository 후보를 조회하고, 선택한 repository를 내려받아 관리 대상으로 저장합니다.")
                     .font(.caption)
