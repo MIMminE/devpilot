@@ -270,7 +270,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
                 return
             }
             Task {
-                await createBranch(issue: issue, repo: repo, summary: summary)
+                _ = await createBranch(issue: issue, repo: repo, summary: summary)
                 isHandlingDeepLink = false
             }
             return
@@ -716,21 +716,27 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         return PASCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
     }
 
-    func createBranch(issue: String, repo: String, summary: String) async {
-        guard !isRunning else { return }
+    @discardableResult
+    func createBranch(issue: String, repo: String, summary: String, showOutput: Bool = true) async -> PASCommandResult {
+        guard !isRunning else {
+            return PASCommandResult(succeeded: false, output: "", summary: "이미 실행 중인 작업이 있습니다.")
+        }
         isRunning = true
         status = "\(issue) 브랜치 생성 중..."
         let result = await Self.executeDetached(["dev", "create-branch", "--repo", repo, "--issue-key", issue, "--summary", summary])
         lastOutput = result.output
         status = result.succeeded ? "\(issue) 브랜치 준비 완료" : "\(issue) 브랜치 생성 실패"
         isRunning = false
-        openOutputWindow(
-            title: result.succeeded ? "브랜치 생성 결과" : "브랜치 생성 오류",
-            output: result.output.isEmpty ? result.summary : result.output
-        )
+        if showOutput || !result.succeeded {
+            openOutputWindow(
+                title: result.succeeded ? "브랜치 생성 결과" : "브랜치 생성 오류",
+                output: result.output.isEmpty ? result.summary : result.output
+            )
+        }
         if result.succeeded {
             openWorkWindow()
         }
+        return PASCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
     }
 
     func startIssueWork(issue: String, summary: String) async -> PASCommandResult {
@@ -818,7 +824,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         return result
     }
 
-    func linkIssueRepository(issue: String, repo: String, summary: String) async -> PASCommandResult {
+    func linkIssueRepository(issue: String, repo: String, summary: String, showWorkWindow: Bool = true) async -> PASCommandResult {
         guard !isRunning else {
             return PASCommandResult(succeeded: false, output: "", summary: "이미 실행 중인 작업이 있습니다.")
         }
@@ -829,7 +835,9 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         status = result.succeeded ? "\(issue) repository 연결 완료" : "\(issue) repository 연결 실패"
         isRunning = false
         if result.succeeded {
-            openWorkWindow()
+            if showWorkWindow {
+                openWorkWindow()
+            }
         } else {
             openOutputWindow(title: "Jira repository 연결 오류", output: result.output.isEmpty ? result.summary : result.output)
         }

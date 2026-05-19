@@ -8,6 +8,7 @@ struct IssueRepositoryLinkView: View {
     @State private var repositories: [LocalRepositoryOption] = []
     @State private var selectedPaths: Set<String> = []
     @State private var isLoading = false
+    @State private var isStartingWork = false
     @State private var resultMessage = ""
 
     var body: some View {
@@ -38,14 +39,16 @@ struct IssueRepositoryLinkView: View {
                 Button(isLoading ? "불러오는 중..." : "관리 repository 불러오기") {
                     Task { await reload() }
                 }
-                .disabled(isLoading || runner.isRunning)
+                .disabled(isBusy)
 
-                Text("여러 repository를 선택할 수 있고, 선택한 연결은 다음 Jira 대시보드에도 표시됩니다.")
+                Text("repository를 고르면 연결 저장, 브랜치 생성, Codex 작업 요청까지 한 번에 이어갈 수 있습니다.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
                 Spacer()
             }
+
+            startFlowSteps
 
             if isLoading {
                 HStack {
@@ -131,18 +134,18 @@ struct IssueRepositoryLinkView: View {
                 Button("연결 저장") {
                     Task { await saveLink() }
                 }
-                .disabled(selectedPaths.isEmpty || runner.isRunning)
+                .disabled(selectedPaths.isEmpty || isBusy)
 
-                Button("연결 저장 후 브랜치 시작") {
-                    Task { await saveLinkAndStartBranch() }
+                Button("작업 시작") {
+                    Task { await saveLinkStartBranchAndOpenCodex() }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(selectedPaths.isEmpty || runner.isRunning)
+                .disabled(selectedPaths.isEmpty || isBusy)
 
-                Button("브랜치 시작 후 IDE 열기") {
+                Button("IDE까지 열기") {
                     Task { await saveLinkStartBranchAndOpenIDE() }
                 }
-                .disabled(selectedPaths.isEmpty || runner.isRunning)
+                .disabled(selectedPaths.isEmpty || isBusy)
             }
         }
         .padding(20)
@@ -152,11 +155,52 @@ struct IssueRepositoryLinkView: View {
         }
     }
 
+    private var isBusy: Bool {
+        isLoading || isStartingWork || runner.isRunning
+    }
+
+    private var startFlowSteps: some View {
+        HStack(spacing: 8) {
+            flowStep("1", "저장소 선택", isReady: !selectedPaths.isEmpty)
+            flowStep("2", "Jira 연결 저장", isReady: false)
+            flowStep("3", "브랜치 생성", isReady: false)
+            flowStep("4", "Codex 시작", isReady: false)
+            Spacer()
+            if isStartingWork {
+                ProgressView()
+                    .controlSize(.small)
+                Text("작업 흐름을 준비하는 중")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(10)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.72))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func flowStep(_ number: String, _ title: String, isReady: Bool) -> some View {
+        HStack(spacing: 5) {
+            Text(number)
+                .font(.caption2.weight(.bold))
+                .frame(width: 17, height: 17)
+                .background((isReady ? Color.green : Color.accentColor).opacity(0.14))
+                .foregroundStyle(isReady ? Color.green : Color.accentColor)
+                .clipShape(Circle())
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(isReady ? .primary : .secondary)
+        }
+    }
+
     private func reload() async {
         isLoading = true
         repositories = await runner.loadManagedRepositories()
         let availablePaths = Set(repositories.map(\.path))
         selectedPaths = selectedPaths.intersection(availablePaths)
+        if selectedPaths.isEmpty, repositories.count == 1, let onlyRepo = repositories.first {
+            selectedPaths.insert(onlyRepo.path)
+        }
         isLoading = false
     }
 
@@ -167,26 +211,61 @@ struct IssueRepositoryLinkView: View {
     }
 
     private func saveLinkAndStartBranch() async {
+        isStartingWork = true
+        defer { isStartingWork = false }
         guard await saveSelectedLinks() else { return }
-        let paths = selectedRepositoryPaths
+        let paths = selectedRepositories
         runner.closeIssueRepositoryLinkWindow()
-        for path in paths {
-            await runner.createBranch(issue: issue, repo: path, summary: summary)
+        for repo in paths {
+            _ = await runner.createBranch(issue: issue, repo: repo.path, summary: summary, showOutput: false)
         }
     }
 
     private func saveLinkStartBranchAndOpenIDE() async {
+        isStartingWork = true
+        defer { isStartingWork = false }
         guard await saveSelectedLinks() else { return }
-        let paths = selectedRepositoryPaths
+        let repos = selectedRepositories
         runner.closeIssueRepositoryLinkWindow()
-        for path in paths {
-            await runner.createBranch(issue: issue, repo: path, summary: summary)
-            runner.openRepositoryInIDE(path: path, appName: runner.loadSettings().defaultIDEAppName)
+        for repo in repos {
+            _ = await runner.createBranch(issue: issue, repo: repo.path, summary: summary, showOutput: false)
+            runner.openRepositoryInIDE(path: repo.path, appName: runner.loadSettings().defaultIDEAppName)
+        }
+    }
+
+    private func saveLinkStartBranchAndOpenCodex() async {
+        isStartingWork = true
+        defer { isStartingWork = false }
+        guard await saveSelectedLinks() else { return }
+        let repos = selectedRepositories
+        var outputs: [String] = [resultMessage].filter { !$0.isEmpty }
+        for repo in repos {
+            let result = await runner.createBranch(issue: issue, repo: repo.path, summary: summary, showOutput: false)
+            outputs.append(result.displayText)
+            if !result.succeeded {
+                resultMessage = outputs.joined(separator: "\n\n")
+                return
+            }
+        }
+        let codexResult = await runner.openCodexWorkspaceForIssue(
+            issue: issue,
+            summary: summary,
+            detail: "",
+            repositories: repos
+        )
+        outputs.append(codexResult.displayText)
+        resultMessage = outputs.joined(separator: "\n\n")
+        if codexResult.succeeded {
+            runner.closeIssueRepositoryLinkWindow()
         }
     }
 
     private var selectedRepositoryPaths: [String] {
         repositories.map(\.path).filter { selectedPaths.contains($0) }
+    }
+
+    private var selectedRepositories: [LocalRepositoryOption] {
+        repositories.filter { selectedPaths.contains($0.path) }
     }
 
     private func toggleSelection(_ path: String) {
@@ -200,7 +279,7 @@ struct IssueRepositoryLinkView: View {
     private func saveSelectedLinks() async -> Bool {
         var outputs: [String] = []
         for path in selectedRepositoryPaths {
-            let result = await runner.linkIssueRepository(issue: issue, repo: path, summary: summary)
+            let result = await runner.linkIssueRepository(issue: issue, repo: path, summary: summary, showWorkWindow: false)
             outputs.append(result.displayText)
             if !result.succeeded {
                 resultMessage = outputs.joined(separator: "\n")
@@ -211,4 +290,3 @@ struct IssueRepositoryLinkView: View {
         return true
     }
 }
-
