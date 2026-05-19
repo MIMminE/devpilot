@@ -23,6 +23,8 @@ struct WorkView: View {
     @State private var lastMessage = ""
     @State private var reportDraft = ""
     @State private var reportNotes = ""
+    @State private var reportWasRefined = false
+    @State private var lastSubmittedReportID = ""
     @State private var filter = "all"
     @State private var pendingAction: RepoAction?
     @State private var showDirtyWarning = false
@@ -1630,6 +1632,7 @@ struct WorkView: View {
                 panelActionChip(title: "초안", systemImage: "doc.badge.gearshape") {
                     Task {
                         reportDraft = await runner.previewDailyReport(notes: reportNotes)
+                        reportWasRefined = false
                         lastMessage = reportDraft
                         showNotice(title: "오늘 한 일 초안", message: reportDraft, succeeded: !reportDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     }
@@ -1671,12 +1674,27 @@ struct WorkView: View {
         } content: {
             VStack(alignment: .leading, spacing: 12) {
                 reportFlowStrip
+                reportEvidenceStrip
 
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("수동 메모")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        HStack {
+                            Text("수동 메모")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            if !briefingYesterdayMemo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                Button("어제 메모 반영") {
+                                    reportNotes = [reportNotes, briefingYesterdayMemo]
+                                        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                                        .filter { !$0.isEmpty }
+                                        .joined(separator: "\n\n")
+                                    rememberBriefing("어제 메모를 보고서 메모로 반영")
+                                }
+                                .font(.caption2)
+                                .buttonStyle(.plain)
+                            }
+                        }
                         TextEditor(text: $reportNotes)
                             .font(.system(.body, design: .monospaced))
                             .frame(minHeight: 130)
@@ -1692,9 +1710,18 @@ struct WorkView: View {
                     .frame(maxWidth: 340)
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("보고서 초안")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        HStack {
+                            Text("보고서 초안")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            if !lastSubmittedReportID.isEmpty {
+                                Text("최근 제출 \(lastSubmittedReportID)")
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
                         TextEditor(text: $reportDraft)
                             .font(.system(.body, design: .monospaced))
                             .frame(minHeight: 130)
@@ -1718,9 +1745,9 @@ struct WorkView: View {
         HStack(spacing: 8) {
             reportStepPill("1", "초안 생성", isReady: !reportDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             startFlowConnector
-            reportStepPill("2", "Codex 다듬기", isReady: false)
+            reportStepPill("2", "Codex 다듬기", isReady: reportWasRefined)
             startFlowConnector
-            reportStepPill("3", runner.isPersonalProfile ? "앱 기록" : "앱 + Slack 제출", isReady: false)
+            reportStepPill("3", runner.isPersonalProfile ? "앱 기록" : "앱 + Slack 제출", isReady: !lastSubmittedReportID.isEmpty)
             Spacer()
             Text("제출하면 기록 화면의 보고서 탭에 자동으로 쌓입니다.")
                 .font(.caption2)
@@ -1730,6 +1757,53 @@ struct WorkView: View {
         .padding(9)
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.42))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var reportEvidenceStrip: some View {
+        HStack(spacing: 8) {
+            reportEvidenceBox(title: "오늘 작업", value: "\(todayWorkCountForReport)", detail: "커밋/머지 근거", systemImage: "clock")
+            reportEvidenceBox(title: "Jira", value: "\(jiraMorningItems.count)", detail: "오늘 할 일", systemImage: "checklist")
+            reportEvidenceBox(title: "메모", value: "\(reportNoteLineCount)", detail: reportNotes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "수동 메모 없음" : "수동 메모 반영", systemImage: "note.text")
+            reportEvidenceBox(title: "기록", value: "\(submittedReports.count)", detail: lastSubmittedReportID.isEmpty ? "최근 제출 대기" : "방금 제출됨", systemImage: "tray")
+        }
+    }
+
+    private func reportEvidenceBox(title: String, value: String, detail: String, systemImage: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 5) {
+                    Text(value)
+                        .font(.caption.weight(.semibold))
+                    Text(detail)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.36))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private var todayWorkCountForReport: Int {
+        repositories.reduce(0) { $0 + $1.todayCommitCount }
+    }
+
+    private var reportNoteLineCount: Int {
+        reportNotes
+            .components(separatedBy: .newlines)
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .count
     }
 
     private func reportStepPill(_ number: String, _ title: String, isReady: Bool) -> some View {
@@ -2262,9 +2336,22 @@ struct WorkView: View {
         showNotice(title: "보고서 제출", message: result.displayText, succeeded: result.succeeded)
         if result.succeeded {
             rememberBriefing("보고서 제출")
+            lastSubmittedReportID = submittedReportID(from: result.displayText)
             await loadRecords()
+            if !lastSubmittedReportID.isEmpty {
+                selectedReportID = lastSubmittedReportID
+            }
+            recordsViewMode = "reports"
             selectedSection = "records"
         }
+    }
+
+    private func submittedReportID(from text: String) -> String {
+        text
+            .components(separatedBy: .newlines)
+            .first { $0.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("- id:") }?
+            .replacingOccurrences(of: "- id:", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 
     private func loadRecords(skipJiraFlow: Bool = false) async {
@@ -2957,6 +3044,7 @@ struct WorkView: View {
         lastMessage = result.displayText
         if result.succeeded {
             reportDraft = result.displayText
+            reportWasRefined = true
             rememberBriefing("Codex 보고서 다듬기")
         }
         showNotice(title: "Codex 보고서", message: result.displayText, succeeded: result.succeeded)
