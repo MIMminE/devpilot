@@ -1345,6 +1345,9 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         let repoList = repositories
             .map { "- \($0.name): \($0.path) | branch \($0.branch)" }
             .joined(separator: "\n")
+        let issueDetail = await loadJiraIssueDetail(issue: issue)
+        let issueDetailContext = formatJiraIssueDetailForCodex(issueDetail, fallbackDetail: detail)
+        let repositoryRules = repositoryInstructionContext(repositories)
         let memoList = (await loadWorkMemos())
             .filter { $0.targetID == issue || $0.targetTitle.localizedCaseInsensitiveContains(issue) }
             .prefix(8)
@@ -1352,16 +1355,18 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
             .joined(separator: "\n")
         let context = CodexPromptBuilder.build(
             kind: .issueWorkspace,
-            userRequest: "\(issue) Jira 작업을 이어갈 수 있도록 관련 repository와 메모를 기준으로 작업 방향을 잡아줘.",
+            userRequest: "\(issue) Jira 작업을 이어갈 수 있도록 기획 본문, 첨부, 댓글, 관련 repository와 메모를 기준으로 작업 방향을 잡아줘.",
             context: [
                 CodexPromptSection("Jira", "- Key: \(issue)\n- Summary: \(summary.isEmpty ? "-" : summary)"),
-                CodexPromptSection("Detail", detail.isEmpty ? "-" : detail),
+                CodexPromptSection("기획 상세", issueDetailContext),
                 CodexPromptSection("Managed Repositories", repoList.isEmpty ? "- 관리 저장소 없음" : repoList),
+                CodexPromptSection("Repository Conventions", repositoryRules.isEmpty ? "- AGENTS.md 또는 추가 컨벤션 파일을 찾지 못했습니다." : repositoryRules),
                 CodexPromptSection("Work Memos", memoList.isEmpty ? "- 연결된 메모 없음" : memoList),
             ],
             globalRules: loadCodexPromptRulesForPrompt(),
             rules: [
                 "이 작업은 위 관리 repository 범위 안에서 우선 검토한다.",
+                "Jira 첨부와 댓글은 기획/QA 맥락으로 취급하되, 실제 구현 전 repository 코드와 함께 검증한다.",
                 "변경 전 현재 브랜치와 미커밋 변경을 확인한다.",
                 "커밋/브랜치/PR 메시지에는 Jira 키 \(issue)를 유지한다.",
             ]
@@ -1422,6 +1427,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
                     """
                 ),
                 CodexPromptSection("작업 유형", taskKind),
+                CodexPromptSection("Repository Conventions", repositoryInstructionContext([repo])),
                 CodexPromptSection("컨벤션/주의사항", convention.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "- repository의 기존 컨벤션과 AGENTS.md가 있다면 우선 따른다." : convention),
             ],
             globalRules: loadCodexPromptRulesForPrompt(),
@@ -1704,6 +1710,67 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         message.contains("repository를 자동 결정하지 못했습니다") ||
         message.contains("--repo로 작업할 repository를 지정") ||
         message.contains("여러 repository가 연결되어 있습니다")
+    }
+
+    private func formatJiraIssueDetailForCodex(_ detail: JiraIssueDetailRecord, fallbackDetail: String) -> String {
+        if detail.key.isEmpty {
+            return fallbackDetail.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "- Jira 상세를 불러오지 못했습니다." : fallbackDetail
+        }
+
+        let attachmentLines = detail.attachments.isEmpty
+            ? "- 첨부 없음"
+            : detail.attachments.prefix(12).map { item in
+                let kind = item.mimeType.isEmpty ? "file" : item.mimeType
+                return "- \(item.filename.isEmpty ? "첨부 파일" : item.filename) | \(kind) | \(item.contentURL)"
+            }.joined(separator: "\n")
+
+        let commentLines = detail.comments.isEmpty
+            ? "- 최근 댓글 없음"
+            : detail.comments.prefix(5).map { item in
+                "- \(item.author.isEmpty ? "작성자 -" : item.author) (\(item.updated.isEmpty ? item.created : item.updated)): \(item.body)"
+            }.joined(separator: "\n")
+
+        return """
+        - URL: \(detail.url.isEmpty ? "-" : detail.url)
+        - 상태: \(detail.status.isEmpty ? "-" : detail.status)
+        - 우선순위: \(detail.priority.isEmpty ? "-" : detail.priority)
+        - 담당: \(detail.assignee.isEmpty ? "-" : detail.assignee)
+        - 보고자: \(detail.reporter.isEmpty ? "-" : detail.reporter)
+        - 생성/갱신: \(detail.created.isEmpty ? "-" : detail.created) / \(detail.updated.isEmpty ? "-" : detail.updated)
+
+        ## 본문
+        \(detail.description.isEmpty ? "-" : detail.description)
+
+        ## 첨부
+        \(attachmentLines)
+
+        ## 최근 댓글
+        \(commentLines)
+        """
+    }
+
+    private func repositoryInstructionContext(_ repositories: [LocalRepositoryOption]) -> String {
+        repositories
+            .compactMap { repo -> String? in
+                let root = URL(fileURLWithPath: repo.path, isDirectory: true)
+                let candidates = [
+                    root.appendingPathComponent("AGENTS.md"),
+                    root.appendingPathComponent(".agents/AGENTS.md"),
+                    root.appendingPathComponent("CLAUDE.md"),
+                ]
+                guard let fileURL = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }),
+                      let text = try? String(contentsOf: fileURL, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
+                      !text.isEmpty else {
+                    return nil
+                }
+                return """
+                ## \(repo.name)
+                - file: \(fileURL.path)
+
+                \(String(text.prefix(6_000)))
+                """
+            }
+            .joined(separator: "\n\n")
     }
 
     private nonisolated static func parseJiraMemoTargets(_ output: String) -> [MemoTargetOption] {
