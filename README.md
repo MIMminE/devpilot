@@ -1,183 +1,183 @@
 # PAS
 
-**PAS** is a macOS-first personal automation system for developer workflows.
+**PAS**는 개발자의 하루 업무 흐름을 한 곳에서 관리하기 위해 만든 macOS 중심 개인 자동화 앱입니다.
 
-It started as a tool for one developer who wanted to keep Jira work, local Git repositories, Codex prompts, daily reports, quick notes, and overtime records in one place. The result is a local menu bar app that behaves like a small developer command center: it watches the day, helps start work, keeps evidence, and turns scattered activity into reportable records.
+Jira 일감, 로컬 Git 저장소, Codex 작업 요청, 업무 보고서, 빠른 메모, 연장근무 기록은 실제 개발 업무에서 자주 흩어지는 정보입니다. PAS는 이 흐름을 하나의 로컬 메뉴바 앱으로 묶어, 오늘 해야 할 일을 확인하고, 작업을 시작하고, 근거를 남기고, 보고서와 기록으로 마무리할 수 있도록 돕습니다.
 
-> Portfolio positioning: PAS demonstrates a practical integration of a native macOS app, a Python automation CLI, local developer tooling, GitHub Actions releases, and AI-assisted workflow design.
+> 포트폴리오 관점에서 PAS는 SwiftUI macOS 앱, Python 자동화 CLI, GitHub Actions 릴리즈, 외부 API 연동, AI 기반 개발 보조 흐름을 실제 개인 업무 문제에 맞춰 통합한 프로젝트입니다.
 
-## Why This Exists
+## 왜 만들었나
 
-Developer work is rarely just code. A typical task jumps between Jira, Git branches, local repositories, pull requests, Slack reports, notes, and sometimes AI tools. PAS was built to reduce that switching cost.
+개발자의 일은 코드 작성만으로 끝나지 않습니다. 하나의 작업을 시작하려고 해도 Jira, Git 브랜치, 로컬 저장소, PR, Slack 보고, 메모, AI 도구를 계속 오가게 됩니다. PAS는 이 전환 비용을 줄이기 위해 만들었습니다.
 
-Instead of treating each tool as a separate destination, PAS turns them into one local workflow:
+PAS가 의도하는 기본 흐름은 다음과 같습니다.
 
 ```text
-Check today's work
-  -> connect Jira issue to repository
-  -> create a branch with the right convention
-  -> prepare a Codex task prompt
-  -> track commits and repository state
-  -> draft and submit a daily report
-  -> keep the record for later review
+오늘 작업 확인
+  -> Jira 일감과 저장소 연결
+  -> 규칙에 맞는 작업 브랜치 생성
+  -> Codex 작업 요청 프롬프트 준비
+  -> Git 작업과 저장소 상태 추적
+  -> 일일 보고서 작성 및 제출
+  -> 날짜별 기록으로 보관
 ```
 
-## What PAS Does
+## 주요 기능
 
-| Area | What the app provides | Why it matters |
+| 영역 | 제공 기능 | 목적 |
 |---|---|---|
-| Dashboard | Today's work, repository signals, Codex health, report state | Gives a fast morning overview without opening every service |
-| Jira workflow | Issue list, planning details, attachments, comments, repository mapping | Keeps the work context close to the code |
-| Repository control | Base branch tracking, working branch state, today's commits, PR/release summaries | Makes local repo status visible before work starts |
-| Codex assistance | Standardized task prompts using Jira, repo, memo, and convention context | Produces more consistent AI-assisted development requests |
-| Reports | Draft generation, Codex refinement, submission, local history | Turns daily activity into a reusable report |
-| Records | Date-based timeline for reports, memos, Jira flow, overtime | Preserves a personal work memory |
-| Profiles | Work/personal profile separation | Allows different repository and token contexts |
-| Overtime | Calendar-based overtime entry and monthly allowance estimation | Tracks personal labor records locally |
+| 대시보드 | 오늘 할 일, 저장소 신호, Codex 상태, 보고서 상태 | 아침에 앱을 켰을 때 우선순위를 빠르게 파악 |
+| Jira 작업 | 일감 목록, 기획 본문, 첨부, 댓글, 저장소 연결 | 작업 맥락을 코드 작업과 함께 유지 |
+| 저장소 관리 | 기준 브랜치, 작업 브랜치, 변경분, rebase/pull 필요 여부, 오늘 커밋 | 로컬 저장소 상태를 작업 전에 확인 |
+| Codex 연동 | Jira, 저장소, 메모, 컨벤션을 포함한 표준 작업 프롬프트 생성 | 반복적인 AI 작업 요청 품질을 일정하게 유지 |
+| 보고서 | 초안 생성, Codex 다듬기, 제출, 로컬 기록 저장 | 하루 작업 내용을 보고 가능한 형태로 정리 |
+| 기록 | 보고서, 메모, Jira 흐름, 연장근무의 날짜별 타임라인 | 개인 업무 히스토리를 다시 확인 |
+| 프로필 | 업무용/개인용 프로필 분리 | 토큰, 저장소, 설정을 목적별로 분리 |
+| 연장근무 | 날짜/시간 기반 연장근무 기록과 월별 예상 수당 계산 | 개인 근로 기록을 로컬에 보관 |
 
-## Main Workflow
+## 핵심 작업 흐름
 
 ```mermaid
 flowchart LR
-    A["Jira issue"] --> B["Repository mapping"]
-    B --> C["Branch creation"]
-    C --> D["Codex task request"]
-    D --> E["Git work and PR"]
-    E --> F["Daily report"]
-    F --> G["Records timeline"]
+    A["Jira 일감"] --> B["저장소 연결"]
+    B --> C["브랜치 생성"]
+    C --> D["Codex 작업 요청"]
+    D --> E["Git 작업 및 PR"]
+    E --> F["일일 보고서"]
+    F --> G["기록 타임라인"]
 ```
 
-The important design choice is that PAS does not only run commands. It keeps the context around those commands: which issue started the work, which repository is connected, which branch exists, what was committed today, and which report was submitted.
+PAS의 핵심은 명령 실행 자체가 아니라, 명령 주변의 맥락을 함께 보존하는 것입니다. 어떤 Jira 일감에서 시작했는지, 어떤 저장소가 연결되었는지, 어떤 브랜치가 만들어졌는지, 오늘 어떤 커밋이 있었는지, 어떤 보고서를 제출했는지를 하나의 흐름으로 이어갑니다.
 
-## Screenshots And Manual Assets
+## 화면 캡처와 사용 매뉴얼 구성
 
-Real screenshots are useful for a portfolio version of this project. Recommended captures:
+포트폴리오용 문서에서는 실제 앱 화면 캡처를 함께 사용하는 것이 좋습니다. 추천 캡처 항목은 다음과 같습니다.
 
-| Screenshot | Suggested filename | What to show |
+| 화면 | 추천 파일명 | 보여줄 내용 |
 |---|---|---|
-| Main dashboard | `docs/portfolio/screenshots/dashboard.png` | Today overview, Codex status, Jira/repository summary |
-| Jira work flow | `docs/portfolio/screenshots/jira-workflow.png` | Issue card, work-state badge, start button, repository mapping |
-| Repository status | `docs/portfolio/screenshots/repositories.png` | Base branch, working branch, today commits, PR/release block |
-| Report flow | `docs/portfolio/screenshots/report.png` | Draft, Codex refinement, submit flow |
-| Records timeline | `docs/portfolio/screenshots/records.png` | Date-based report/memo/Jira/overtime timeline |
-| Settings | `docs/portfolio/screenshots/settings.png` | Profiles, repositories, integrations, advanced settings |
+| 메인 대시보드 | `docs/portfolio/screenshots/dashboard.png` | 오늘 상황판, Codex 상태, Jira/저장소 요약 |
+| Jira 작업 흐름 | `docs/portfolio/screenshots/jira-workflow.png` | 일감 카드, 작업 상태 배지, 시작 버튼, 저장소 연결 |
+| 저장소 상태 | `docs/portfolio/screenshots/repositories.png` | 기준 브랜치, 작업 브랜치, 오늘 커밋, PR/릴리즈 |
+| 보고서 화면 | `docs/portfolio/screenshots/report.png` | 초안 생성, Codex 다듬기, 제출 흐름 |
+| 기록 타임라인 | `docs/portfolio/screenshots/records.png` | 날짜별 보고서/메모/Jira/연장근무 기록 |
+| 설정 화면 | `docs/portfolio/screenshots/settings.png` | 프로필, 저장소, 연동, 고급 설정 구조 |
 
-Before publishing screenshots, hide or replace:
+공개용 캡처를 만들 때는 아래 정보는 반드시 가리거나 대체해야 합니다.
 
-- company names, internal project names, Jira domains, and issue titles
-- personal email addresses and local filesystem paths
-- Slack channels, private repository names, tokens, and API keys
-- business-sensitive comments, attachments, or report text
+- 회사명, 내부 프로젝트명, Jira 도메인, 실제 일감 제목
+- 개인 이메일, 로컬 파일 경로
+- Slack 채널명, 비공개 저장소명, 토큰, API 키
+- 업무상 민감한 댓글, 첨부, 보고서 내용
 
-## Product Shape
+## 제품 구성
 
-PAS is designed around a few small but repeatable developer moments.
+PAS는 매일 반복되는 개발자의 작은 순간들을 기준으로 설계했습니다.
 
-### 1. Start The Day
+### 1. 하루 시작
 
-The dashboard gives a compact view of today's development situation:
+대시보드는 오늘 개발 상황을 짧게 보여줍니다.
 
-- assigned Jira work
-- newly detected Jira items
-- active repositories
-- repositories that need attention
-- Codex availability
-- linked Jira and active branch counts
+- 내게 할당된 Jira 일감
+- 새로 감지된 Jira 일감
+- 작업 중인 저장소
+- 정비가 필요한 저장소
+- Codex 사용 가능 상태
+- 연결된 Jira와 브랜치 진행 수
 
-The goal is not to show everything. The goal is to answer: **what needs attention first?**
+목표는 모든 정보를 보여주는 것이 아니라, **지금 먼저 봐야 할 것이 무엇인지** 알려주는 것입니다.
 
-### 2. Start A Jira Task
+### 2. Jira 일감 시작
 
-When a Jira issue is selected, PAS can:
+Jira 일감을 선택하면 PAS는 다음 흐름을 지원합니다.
 
-- show planning text, attachments, and recent comments
-- connect the issue to one or more managed repositories
-- create a branch using the issue key
-- open Codex with a structured task prompt
-- keep the issue-to-repository relationship for later tracking
+- 기획 본문, 첨부, 최근 댓글 확인
+- 하나 이상의 관리 저장소 연결
+- Jira 키가 포함된 작업 브랜치 생성
+- Codex 작업 요청 프롬프트 생성
+- 일감과 저장소 연결 상태 보관
 
-The work-state badge moves through:
+작업 상태는 다음 흐름으로 표시됩니다.
 
 ```text
 작업 전 -> 저장소 연결 -> 브랜치 준비 -> Codex 작업 요청
 ```
 
-### 3. Work Across Local Repositories
+### 3. 로컬 저장소 관리
 
-PAS treats local repositories as first-class state. Each managed repository can show:
+PAS는 로컬 저장소 상태를 중요한 업무 정보로 다룹니다. 관리 저장소마다 다음 정보를 확인할 수 있습니다.
 
-- base branch and current branch
-- dirty working tree count
-- ahead/behind status
-- rebase or pull needs
-- today's commits and merges
-- pull request and release summaries
-- automatic handling results
+- 기준 브랜치와 현재 브랜치
+- 변경된 파일 수
+- ahead/behind 상태
+- rebase 또는 pull 필요 여부
+- 오늘 커밋과 머지 기록
+- PR 및 릴리즈 요약
+- 자동 처리 결과
 
-This is especially useful when one Jira task spans more than one repository.
+하나의 Jira 일감이 여러 저장소에 걸쳐 있을 때 특히 유용합니다.
 
-### 4. Ask Codex With Better Context
+### 4. Codex 작업 요청
 
-PAS can generate Codex task prompts that include:
+PAS는 Codex에게 보낼 작업 요청을 만들 때 필요한 맥락을 함께 구성합니다.
 
-- the user's request
-- Jira key and summary
-- Jira planning details, attachments, and comments
-- connected repositories
-- repository conventions from files such as `AGENTS.md`
-- recent work memos
-- expected output style
+- 사용자가 요청한 작업
+- Jira 키와 요약
+- Jira 기획 본문, 첨부, 댓글
+- 연결된 저장소 목록
+- `AGENTS.md` 같은 저장소별 컨벤션 파일
+- 최근 작업 메모
+- 기대하는 결과 형식
 
-This avoids rewriting the same setup context every time.
+매번 같은 설명을 반복하지 않고, 일관된 품질의 AI 작업 요청을 만들기 위한 구조입니다.
 
-### 5. Write And Keep Reports
+### 5. 보고서와 기록
 
-PAS can produce a daily report draft from:
+PAS는 다음 근거를 바탕으로 일일 보고서 초안을 만들 수 있습니다.
 
-- today's commits and merges
-- Jira work context
-- manual notes
-- local work memos
-- report-writing rules
+- 오늘 커밋과 머지
+- Jira 작업 맥락
+- 수동 메모
+- 로컬 작업 메모
+- 보고서 작성 규칙
 
-Reports can be refined, submitted, and stored in the local record history. The records screen then shows activity by date, so old reports, notes, Jira flow, and overtime records remain searchable as a personal work memory.
+보고서는 다듬고 제출한 뒤 로컬 기록으로 저장됩니다. 기록 화면에서는 날짜별로 보고서, 메모, Jira 흐름, 연장근무 기록을 함께 볼 수 있어 개인 업무 히스토리로 활용할 수 있습니다.
 
-## Architecture
+## 아키텍처
 
 ```mermaid
 flowchart TB
-    UI["SwiftUI macOS menu bar app"] --> Runner["PASRunner bridge"]
+    UI["SwiftUI macOS 메뉴바 앱"] --> Runner["PASRunner 브리지"]
     Runner --> CLI["Python CLI: pas"]
-    CLI --> Git["Local Git repositories"]
+    CLI --> Git["로컬 Git 저장소"]
     CLI --> Jira["Jira API"]
     CLI --> GitHub["GitHub CLI / GitHub API"]
     CLI --> Slack["Slack API"]
-    CLI --> State["Local app state"]
+    CLI --> State["로컬 앱 상태"]
     Runner --> Codex["Codex CLI"]
-    Actions["GitHub Actions"] --> Release["Tagged macOS release zip"]
+    Actions["GitHub Actions"] --> Release["태그 기반 macOS 릴리즈 zip"]
 ```
 
-| Layer | Role |
+| 계층 | 역할 |
 |---|---|
-| SwiftUI app | Native macOS UI, menu bar entry, dashboards, settings, local windows |
-| Python CLI | Automation commands, Jira/Git/Slack/report/overtime features |
-| Local state | Profiles, issue-repository links, reports, memos, overtime records |
-| Codex CLI | AI-assisted task execution and prompt-driven development workflows |
-| GitHub Actions | Tag-based release build and GitHub Release publication |
+| SwiftUI 앱 | macOS 네이티브 UI, 메뉴바 앱, 대시보드, 설정, 로컬 창 |
+| Python CLI | Jira/Git/Slack/보고서/연장근무 자동화 명령 |
+| 로컬 상태 | 프로필, Jira-저장소 연결, 보고서, 메모, 연장근무 기록 |
+| Codex CLI | AI 기반 작업 요청 및 개발 보조 흐름 |
+| GitHub Actions | 태그 기반 빌드와 GitHub Release 배포 |
 
-## Repository Layout
+## 프로젝트 구조
 
 ```text
-apps/macos/        SwiftUI menu bar app
-src/               Python automation CLI and integrations
-examples/          Example config, assignee, and report-agent files
-scripts/           Local helper scripts
-ops/launchd/       macOS launchd templates
-docs/              Product notes and detailed usage
-.github/           Tag-based release workflow and release notes
+apps/macos/        SwiftUI 메뉴바 앱
+src/               Python 자동화 CLI와 연동 로직
+examples/          예시 설정, 담당자, 보고서 규칙 파일
+scripts/           로컬 헬퍼 스크립트
+ops/launchd/       macOS launchd 템플릿
+docs/              제품 기획과 사용 문서
+.github/           태그 기반 릴리즈 workflow와 릴리즈 노트
 ```
 
-## Local Development
+## 로컬 개발
 
 ```bash
 just setup
@@ -186,17 +186,17 @@ just check
 just macos-app-build
 ```
 
-Runtime settings are created under:
+런타임 설정은 아래 경로에 생성됩니다.
 
 ```text
 ~/Library/Application Support/PAS/
 ```
 
-Example files live in [`examples/`](examples/).
+예시 파일은 [`examples/`](examples/)에 있습니다.
 
-## Release Flow
+## 릴리즈 방식
 
-PAS uses tag-based GitHub Releases.
+PAS는 태그 기반 GitHub Release를 사용합니다.
 
 ```bash
 git push origin main
@@ -204,49 +204,49 @@ git tag v0.1.x
 git push origin v0.1.x
 ```
 
-When a `v*` tag is pushed:
+`v*` 태그가 push되면 다음 과정이 실행됩니다.
 
-1. GitHub Actions builds the Python CLI with PyInstaller.
-2. GitHub Actions builds the SwiftUI macOS app.
-3. The workflow assembles `PAS.app`.
-4. The app is archived as `pas-macos-menubar-arm64.zip`.
-5. A GitHub Release is created with the zip attached.
+1. GitHub Actions가 Python CLI를 PyInstaller로 빌드합니다.
+2. SwiftUI macOS 앱을 빌드합니다.
+3. `PAS.app` 번들을 조립합니다.
+4. 앱을 `pas-macos-menubar-arm64.zip`으로 압축합니다.
+5. GitHub Release를 만들고 zip 파일을 첨부합니다.
 
-Release notes can be written in:
+릴리즈 노트는 아래 경로에 작성할 수 있습니다.
 
 ```text
 .github/release-notes/v0.1.x.md
 ```
 
-## Portfolio Highlights
+## 포트폴리오 포인트
 
-This project is useful as a portfolio piece because it is not a toy integration. It is a practical local tool built around real developer workflow pressure.
+PAS는 단순 예제성 프로젝트가 아니라, 실제 개발자의 업무 흐름에서 생긴 불편을 해결하기 위해 만든 로컬 도구입니다.
 
-Key engineering points:
+강조할 수 있는 기술적 포인트는 다음과 같습니다.
 
-- Native macOS UI with SwiftUI
-- Python CLI automation backend
-- Jira, GitHub, Slack, Git, Codex, and optional OpenAI API integration
-- Local profile separation for work and personal contexts
-- Token-based external system integration with local-only configuration
-- Structured AI prompt generation for repeatable Codex tasks
-- Date-based work history and report storage
-- GitHub Actions release automation
-- Iterative product design around personal daily usage
+- SwiftUI 기반 macOS 네이티브 앱
+- Python CLI 기반 자동화 백엔드
+- Jira, GitHub, Slack, Git, Codex, 선택적 OpenAI API 연동
+- 업무용/개인용 프로필 분리
+- 외부 시스템 토큰을 로컬 설정으로 관리
+- 반복 가능한 Codex 작업 요청을 위한 구조화된 프롬프트 생성
+- 날짜별 업무 기록과 보고서 저장
+- GitHub Actions 기반 릴리즈 자동화
+- 실제 사용 피드백을 반영한 제품형 개선 과정
 
-## Documentation
+## 문서
 
-- [Detailed usage](docs/USAGE.md)
-- [Product plan](docs/PRODUCT_PLAN.md)
+- [상세 사용법](docs/USAGE.md)
+- [제품 기획안](docs/PRODUCT_PLAN.md)
 
-## Current Status
+## 현재 상태
 
-PAS is best described as a **personal-use beta**: stable enough to use in a daily developer workflow, still evolving through real usage feedback.
+PAS는 현재 **개인 실사용 베타**에 가깝습니다. 매일 개발 업무 옆에 켜두고 사용할 수 있는 수준까지 왔고, 실제 사용 과정에서 계속 다듬는 중입니다.
 
-The next polish areas are:
+다음 개선 후보는 다음과 같습니다.
 
-- better screenshot-based user manual
-- more refined failure recovery guides
-- richer weekly/monthly work review
-- more repository-specific Codex task templates
-- further decomposition of large SwiftUI views
+- 화면 캡처 기반 사용 매뉴얼
+- 실패 상황별 복구 가이드
+- 주간/월간 업무 회고 기능
+- 저장소별 Codex 작업 템플릿 강화
+- 큰 SwiftUI 화면의 추가 분리
