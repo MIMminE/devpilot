@@ -98,6 +98,7 @@ struct IssueStartFlowStrip: View {
 
 struct IssueWorkStateBadge: View {
     let state: IssueWorkState
+    var isPrivacyMasked = false
 
     var body: some View {
         HStack(spacing: 5) {
@@ -113,6 +114,6 @@ struct IssueWorkStateBadge: View {
         .padding(.vertical, 4)
         .background(state.tint.opacity(0.10))
         .clipShape(Capsule())
-        .help(state.detail)
+        .help(isPrivacyMasked ? "샘플 저장소 연결 상태입니다." : state.detail)
     }
 }

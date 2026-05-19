@@ -11,6 +11,7 @@ struct WorkView: View {
     @AppStorage("pas.work.repositoryOrder") private var repositoryOrderRaw = ""
     @AppStorage("pas.work.sidebarCollapsed") private var isSidebarCollapsed = false
     @AppStorage("pas.work.selectedSection") private var selectedSection = "dashboard"
+    @AppStorage("pas.work.privacyMaskEnabled") private var privacyMaskEnabled = false
     @AppStorage("pas.briefing.yesterdayMemo") private var briefingYesterdayMemo = ""
     @AppStorage("pas.briefing.focusProject") private var briefingFocusProject = ""
     @AppStorage("pas.briefing.memoryLog") private var briefingMemoryLog = ""
@@ -202,8 +203,8 @@ struct WorkView: View {
                     id: "repo-\(repo.path)-\(index)",
                     sortKey: "23:\(String(format: "%02d", index))",
                     time: "오늘",
-                    title: "\(repo.name) 작업",
-                    detail: line,
+                    title: "\(displayRepoName(repo)) 작업",
+                    detail: displayCommitLine(line, index: index),
                     systemImage: "chevron.left.forwardslash.chevron.right",
                     tint: .green
                 )
@@ -217,7 +218,7 @@ struct WorkView: View {
                 id: "report-\(report.id)",
                 sortKey: report.submittedAt,
                 time: compactTimelineTime(report.submittedAt),
-                title: report.title,
+                title: privacyText(report.title, fallback: "샘플 보고서"),
                 detail: report.slackSent ? "앱과 Slack에 제출됨" : "앱 기록으로 제출됨",
                 systemImage: "doc.text.fill",
                 tint: .blue
@@ -228,8 +229,8 @@ struct WorkView: View {
                 id: "memo-\(memo.id)",
                 sortKey: memo.createdAt,
                 time: compactTimelineTime(memo.createdAt),
-                title: memo.targetTitle.isEmpty ? memo.targetID : memo.targetTitle,
-                detail: memo.text,
+                title: displayMemoTitle(memo),
+                detail: privacyText(memo.text, fallback: "샘플 작업 메모입니다."),
                 systemImage: "note.text",
                 tint: memo.targetType == "jira" ? .purple : .secondary
             )
@@ -239,8 +240,8 @@ struct WorkView: View {
                 id: "jira-\(item.id)",
                 sortKey: item.updated.isEmpty ? item.created : item.updated,
                 time: compactTimelineTime(item.updated.isEmpty ? item.created : item.updated),
-                title: "\(item.key) \(item.status)",
-                detail: item.title,
+                title: "\(displayIssueKey(item.key)) \(item.status)",
+                detail: displayIssueTitle(key: item.key, title: item.title),
                 systemImage: item.isDone ? "checkmark.circle.fill" : "arrow.triangle.branch",
                 tint: flowTint(for: item.status)
             )
@@ -272,6 +273,79 @@ struct WorkView: View {
         }
         let leading = calendar.component(.weekday, from: monthInterval.start) - 1
         return Array(repeating: 0, count: leading) + Array(range)
+    }
+
+    private func privacyText(_ value: String, fallback: String) -> String {
+        guard privacyMaskEnabled else { return value }
+        return fallback
+    }
+
+    private func displayIssueKey(_ key: String) -> String {
+        guard privacyMaskEnabled else { return key }
+        let number = key.split(separator: "-").last.map(String.init) ?? "123"
+        return "DEMO-\(number)"
+    }
+
+    private func displayIssueTitle(key: String, title: String) -> String {
+        guard privacyMaskEnabled else { return title.isEmpty ? "제목 없음" : title }
+        return "\(displayIssueKey(key)) 샘플 개발 일감"
+    }
+
+    private func displayPerson(_ value: String) -> String {
+        guard privacyMaskEnabled, !value.isEmpty, value != "-" else { return value }
+        return "담당자"
+    }
+
+    private func displayRepoName(_ repo: LocalRepositoryOption) -> String {
+        guard privacyMaskEnabled else { return repo.name }
+        let index = (orderedRepositories(repositories).firstIndex { $0.path == repo.path } ?? 0) + 1
+        return "sample-repo-\(index)"
+    }
+
+    private func displayCommitLine(_ line: String, index: Int = 0) -> String {
+        guard privacyMaskEnabled else { return line }
+        let samples = [
+            "커밋 12분 전 a1b2c3d DEMO-123 작업 화면 흐름 정리",
+            "커밋 34분 전 b2c3d4e DEMO-123 저장소 상태 카드 개선",
+            "머지 1시간 전 c3d4e5f DEMO-123 PR 병합",
+            "커밋 2시간 전 d4e5f6a DEMO-123 기록 타임라인 정리",
+        ]
+        return samples[index % samples.count]
+    }
+
+    private func displayMemoTitle(_ memo: WorkMemoRecord) -> String {
+        guard privacyMaskEnabled else {
+            return memo.targetTitle.isEmpty ? memo.targetID : memo.targetTitle
+        }
+        if memo.targetType == "jira" {
+            return "\(displayIssueKey(memo.targetID)) 메모"
+        }
+        return "샘플 작업 메모"
+    }
+
+    private func maskedOutput(_ value: String) -> String {
+        guard privacyMaskEnabled else { return value }
+        var result = value
+        result = result.replacingOccurrences(
+            of: #"[A-Z][A-Z0-9]+-\d+"#,
+            with: "DEMO-123",
+            options: .regularExpression
+        )
+        result = result.replacingOccurrences(
+            of: #"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}"#,
+            with: "user@example.com",
+            options: [.regularExpression, .caseInsensitive]
+        )
+        result = result.replacingOccurrences(
+            of: #"/Users/[^ \n]+"#,
+            with: "/Users/dev/workspace/sample",
+            options: .regularExpression
+        )
+        for repo in repositories {
+            result = result.replacingOccurrences(of: repo.name, with: displayRepoName(repo))
+            result = result.replacingOccurrences(of: repo.path, with: "/Users/dev/workspace/\(displayRepoName(repo))")
+        }
+        return result
     }
 
     var body: some View {
@@ -370,7 +444,7 @@ struct WorkView: View {
         .alert("변경 파일이 있습니다", isPresented: $showDirtyWarning, presenting: pendingAction) { _ in
             Button("확인", role: .cancel) {}
         } message: { action in
-            Text("\(action.repo.name)에 커밋하지 않은 변경 파일이 있습니다. 업데이트나 rebase 전에 commit 또는 stash를 먼저 처리해 주세요.")
+            Text("\(displayRepoName(action.repo))에 커밋하지 않은 변경 파일이 있습니다. 업데이트나 rebase 전에 commit 또는 stash를 먼저 처리해 주세요.")
         }
     }
 
@@ -391,6 +465,19 @@ struct WorkView: View {
             }
 
             Spacer()
+
+            Button {
+                privacyMaskEnabled.toggle()
+            } label: {
+                Label(privacyMaskEnabled ? "마스킹 켜짐" : "마스킹", systemImage: privacyMaskEnabled ? "eye.slash.fill" : "eye.slash")
+                    .font(.caption2.weight(.semibold))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background((privacyMaskEnabled ? Color.orange : Color(nsColor: .controlBackgroundColor)).opacity(0.72))
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .help("포트폴리오 캡처용으로 Jira, 저장소, 사람, 커밋 메시지 표시를 샘플 값으로 바꿉니다.")
 
             Picker("화면", selection: $appearance) {
                 Image(systemName: "circle.lefthalf.filled").tag("system")
@@ -629,12 +716,12 @@ struct WorkView: View {
                     ForEach(jiraMorningItems.prefix(4)) { item in
                         let workState = issueWorkState(for: item)
                         HStack(spacing: 8) {
-                            flowTag(item.key, tint: .blue)
-                            Text(item.title.isEmpty ? "제목 없음" : item.title)
+                            flowTag(displayIssueKey(item.key), tint: .blue)
+                            Text(displayIssueTitle(key: item.key, title: item.title))
                                 .font(.caption.weight(.semibold))
                                 .lineLimit(1)
                             Spacer()
-                            IssueWorkStateBadge(state: workState)
+                            IssueWorkStateBadge(state: workState, isPrivacyMasked: privacyMaskEnabled)
                             jiraMetaChip(item.statusText, tint: flowTint(for: item.statusText))
                         }
                         .padding(8)
@@ -836,7 +923,7 @@ struct WorkView: View {
                     Button {
                         selectedWorkIssueKey = item.key
                     } label: {
-                        Text(item.key)
+                        Text(displayIssueKey(item.key))
                             .font(.caption2.weight(.semibold))
                             .lineLimit(1)
                             .padding(.horizontal, 8)
@@ -855,7 +942,7 @@ struct WorkView: View {
                 HStack(spacing: 7) {
                     IssueStartFlowStrip(state: workState, codexReady: codexHealth.isAvailable)
                     Spacer(minLength: 0)
-                    Text(item.title)
+                    Text(displayIssueTitle(key: item.key, title: item.title))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -914,11 +1001,11 @@ struct WorkView: View {
                     HStack(spacing: 7) {
                         flowTag(selectedIssueDetail.status.isEmpty ? "상태 -" : selectedIssueDetail.status, tint: flowTint(for: selectedIssueDetail.status))
                         flowTag(selectedIssueDetail.priority.isEmpty ? "우선순위 -" : selectedIssueDetail.priority, tint: .orange)
-                        flowTag(selectedIssueDetail.assignee.isEmpty ? "담당 -" : selectedIssueDetail.assignee, tint: .blue)
+                        flowTag(selectedIssueDetail.assignee.isEmpty ? "담당 -" : displayPerson(selectedIssueDetail.assignee), tint: .blue)
                         Spacer(minLength: 0)
                     }
 
-                    Text(selectedIssueDetail.description.isEmpty ? "기획 본문이 비어 있습니다." : selectedIssueDetail.description)
+                    Text(selectedIssueDetail.description.isEmpty ? "기획 본문이 비어 있습니다." : privacyText(selectedIssueDetail.description, fallback: "포트폴리오 캡처용으로 기획 본문을 샘플 설명으로 표시합니다."))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(5)
@@ -951,10 +1038,10 @@ struct WorkView: View {
                         .foregroundStyle(Color.accentColor)
                         .frame(width: 18)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(item.filename.isEmpty ? "첨부 파일" : item.filename)
+                        Text(item.filename.isEmpty ? "첨부 파일" : privacyText(item.filename, fallback: "sample-attachment.png"))
                             .font(.caption.weight(.semibold))
                             .lineLimit(1)
-                        Text([item.mimeType, formattedFileSize(item.size), item.author].filter { !$0.isEmpty }.joined(separator: " · "))
+                        Text([item.mimeType, formattedFileSize(item.size), displayPerson(item.author)].filter { !$0.isEmpty }.joined(separator: " · "))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -980,13 +1067,13 @@ struct WorkView: View {
             ForEach(selectedIssueDetail.comments.prefix(3)) { item in
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
-                        Text(item.author.isEmpty ? "작성자 -" : item.author)
+                        Text(item.author.isEmpty ? "작성자 -" : displayPerson(item.author))
                             .font(.caption2.weight(.semibold))
                         Text(item.updated.isEmpty ? item.created : item.updated)
                             .font(.caption2.monospacedDigit())
                             .foregroundStyle(.secondary)
                     }
-                    Text(item.body)
+                    Text(privacyText(item.body, fallback: "샘플 댓글 내용입니다."))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(3)
@@ -1011,14 +1098,14 @@ struct WorkView: View {
         let workState = issueWorkState(for: item)
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 8) {
-                flowTag(item.key, tint: .blue)
+                flowTag(displayIssueKey(item.key), tint: .blue)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(item.title.isEmpty ? "제목 없음" : item.title)
+                    Text(displayIssueTitle(key: item.key, title: item.title))
                         .font(.headline)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 7) {
-                        IssueWorkStateBadge(state: workState)
+                        IssueWorkStateBadge(state: workState, isPrivacyMasked: privacyMaskEnabled)
                         jiraMetaChip(item.statusText, tint: flowTint(for: item.statusText))
                         if item.priorityText != "-" {
                             jiraMetaChip(item.priorityText, tint: item.priorityText.contains("High") || item.priorityText.contains("높") ? .orange : .secondary)
@@ -1041,7 +1128,7 @@ struct WorkView: View {
             }
 
             if !item.bodyText.isEmpty {
-                Text(item.bodyText)
+                Text(privacyText(item.bodyText, fallback: "샘플 Jira 본문입니다."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
@@ -1049,7 +1136,7 @@ struct WorkView: View {
             }
 
             HStack(spacing: 10) {
-                jiraInfoPill("담당", item.assigneeText)
+                jiraInfoPill("담당", displayPerson(item.assigneeText))
                 jiraInfoPill("등록", item.createdText)
                 jiraInfoPill("갱신", item.updatedText)
                 Spacer(minLength: 0)
@@ -1171,8 +1258,8 @@ struct WorkView: View {
                                 }
                             } label: {
                                 HStack(spacing: 8) {
-                                    flowTag(item.key, tint: .blue)
-                                    Text(item.title.isEmpty ? "제목 없음" : item.title)
+                                    flowTag(displayIssueKey(item.key), tint: .blue)
+                                    Text(displayIssueTitle(key: item.key, title: item.title))
                                         .font(.caption.weight(.semibold))
                                         .lineLimit(1)
                                     Spacer(minLength: 0)
@@ -1199,13 +1286,13 @@ struct WorkView: View {
         HStack(alignment: .top, spacing: 10) {
             VStack(alignment: .leading, spacing: 5) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    flowTag(item.key, tint: .blue)
+                    flowTag(displayIssueKey(item.key), tint: .blue)
                     flowTag(item.issueType, tint: .secondary)
-                    Text(item.project)
+                    Text(privacyText(item.project, fallback: "DEMO"))
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
                 }
-                Text(item.title.isEmpty ? "제목 없음" : item.title)
+                Text(displayIssueTitle(key: item.key, title: item.title))
                     .font(.callout.weight(.semibold))
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1225,8 +1312,8 @@ struct WorkView: View {
             .frame(width: 116, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 6) {
-                personFlowLine(title: "등록", name: item.reporter, tint: .purple)
-                personFlowLine(title: "담당", name: item.assignee, tint: .blue)
+                personFlowLine(title: "등록", name: displayPerson(item.reporter), tint: .purple)
+                personFlowLine(title: "담당", name: displayPerson(item.assignee), tint: .blue)
             }
             .frame(width: 188, alignment: .leading)
 
@@ -1337,7 +1424,7 @@ struct WorkView: View {
                                 .fill(repo.needsUpdate ? Color.orange : Color.green)
                                 .frame(width: 7, height: 7)
                             VStack(alignment: .leading, spacing: 1) {
-                                Text(repo.name)
+                                Text(displayRepoName(repo))
                                     .font(.caption.weight(.semibold))
                                     .lineLimit(1)
                                 Text(repo.branch)
@@ -1536,14 +1623,14 @@ struct WorkView: View {
                 } else {
                     ForEach(items) { item in
                         VStack(alignment: .leading, spacing: 8) {
-                            JiraIssueRow(item: item) {
+                            JiraIssueRow(item: item, isPrivacyMasked: privacyMaskEnabled) {
                                 if let link = item.link, !link.isEmpty {
                                     runner.openExternalURL(link)
                                 }
                             }
                             HStack(spacing: 8) {
-                                IssueWorkStateBadge(state: issueWorkState(for: item))
-                                Text(issueWorkState(for: item).detail)
+                                IssueWorkStateBadge(state: issueWorkState(for: item), isPrivacyMasked: privacyMaskEnabled)
+                                Text(privacyMaskEnabled ? "샘플 저장소 연결 상태입니다." : issueWorkState(for: item).detail)
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
@@ -1759,6 +1846,7 @@ struct WorkView: View {
                                 branches: branchOptionsByPath[repo.path] ?? [],
                                 isSelected: selectedPath == repo.path,
                                 isRunning: runner.isRunning,
+                                isPrivacyMasked: privacyMaskEnabled,
                                 onSelect: {
                                     selectedPath = repo.path
                                 },
@@ -2117,7 +2205,7 @@ struct WorkView: View {
                                 Text(report.date)
                                     .font(.caption2.monospacedDigit())
                                     .foregroundStyle(.secondary)
-                                Text(report.title)
+                                Text(privacyText(report.title, fallback: "샘플 보고서"))
                                     .font(.caption.weight(.semibold))
                                     .lineLimit(1)
                                 Spacer()
@@ -2181,7 +2269,7 @@ struct WorkView: View {
             if let report = selectedReport {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(report.title)
+                        Text(privacyText(report.title, fallback: "샘플 보고서"))
                             .font(.headline)
                             .lineLimit(2)
                         Text("\(report.date) · \(report.slackSent ? "앱 + Slack 제출" : "앱 기록")")
@@ -2200,7 +2288,7 @@ struct WorkView: View {
                 }
 
                 ScrollView {
-                    Text(report.text)
+                    Text(privacyText(report.text, fallback: "포트폴리오 캡처용으로 보고서 본문을 샘플 내용으로 표시합니다."))
                         .font(.system(.body, design: .monospaced))
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2237,8 +2325,8 @@ struct WorkView: View {
                         ForEach(workMemos.prefix(8)) { memo in
                             VStack(alignment: .leading, spacing: 5) {
                                 HStack(spacing: 8) {
-                                    flowTag(memo.targetID, tint: memo.targetType == "jira" ? .blue : .secondary)
-                                    Text(memo.targetTitle)
+                                    flowTag(memo.targetType == "jira" ? displayIssueKey(memo.targetID) : privacyText(memo.targetID, fallback: "MEMO"), tint: memo.targetType == "jira" ? .blue : .secondary)
+                                    Text(displayMemoTitle(memo))
                                         .font(.caption.weight(.semibold))
                                         .lineLimit(1)
                                     Spacer()
@@ -2246,7 +2334,7 @@ struct WorkView: View {
                                         .font(.caption2.monospacedDigit())
                                         .foregroundStyle(.secondary)
                                 }
-                                Text(memo.text)
+                                Text(privacyText(memo.text, fallback: "샘플 작업 메모입니다."))
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(3)
@@ -3608,7 +3696,7 @@ struct WorkView: View {
     }
 
     private func showNotice(title: String, message: String, succeeded: Bool) {
-        notice = WorkNotice(title: title, message: message, succeeded: succeeded)
+        notice = WorkNotice(title: maskedOutput(title), message: maskedOutput(message), succeeded: succeeded)
     }
 }
 

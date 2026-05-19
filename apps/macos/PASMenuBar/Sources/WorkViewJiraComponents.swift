@@ -88,13 +88,14 @@ struct JiraFlowItem: Identifiable {
 
 struct JiraIssueRow: View {
     let item: JiraListItem
+    var isPrivacyMasked = false
     let openLink: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    Text(item.key)
+                    Text(displayIssueKey)
                         .font(.caption.weight(.bold))
                         .foregroundStyle(Color.accentColor)
                         .padding(.horizontal, 7)
@@ -102,14 +103,14 @@ struct JiraIssueRow: View {
                         .background(Color.accentColor.opacity(0.14))
                         .clipShape(RoundedRectangle(cornerRadius: 6))
 
-                    Text(item.title.isEmpty ? "제목 없음" : item.title)
+                    Text(displayTitle)
                         .font(.callout.weight(.semibold))
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
 
                 if !item.detail.isEmpty {
-                    Text(item.detail)
+                    Text(displayDetail)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(3)
@@ -136,6 +137,25 @@ struct JiraIssueRow: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color(nsColor: .separatorColor).opacity(0.6))
         )
+    }
+
+    private var displayIssueKey: String {
+        guard isPrivacyMasked else { return item.key }
+        let number = item.key.split(separator: "-").last.map(String.init) ?? "123"
+        return "DEMO-\(number)"
+    }
+
+    private var displayTitle: String {
+        guard isPrivacyMasked else { return item.title.isEmpty ? "제목 없음" : item.title }
+        return "\(displayIssueKey) 샘플 개발 일감"
+    }
+
+    private var displayDetail: String {
+        guard isPrivacyMasked else { return item.detail }
+        return """
+        상태: In Progress | 우선순위: High | 담당: 담당자
+        내용: 포트폴리오 캡처용으로 Jira 상세 내용을 샘플 값으로 표시합니다.
+        """
     }
 }
 

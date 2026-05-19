@@ -447,6 +447,7 @@ struct RepositoryDashboardRow: View {
     let branches: [BranchOption]
     let isSelected: Bool
     let isRunning: Bool
+    let isPrivacyMasked: Bool
     let onSelect: () -> Void
     let onCheckout: (String) -> Void
     let onOpenIDE: () -> Void
@@ -478,8 +479,8 @@ struct RepositoryDashboardRow: View {
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                TodayCommitInlineView(repo: repo, visibleRows: visibleCommitRows)
-                GitHubRepoOverviewView(repo: repo)
+                TodayCommitInlineView(repo: repo, visibleRows: visibleCommitRows, isPrivacyMasked: isPrivacyMasked)
+                GitHubRepoOverviewView(repo: repo, isPrivacyMasked: isPrivacyMasked)
             }
         }
         .padding(16)
@@ -496,11 +497,12 @@ struct RepositoryDashboardRow: View {
 
     private var repoTitleRow: some View {
         HStack(spacing: 8) {
-            Text(repo.name)
+            Text(displayRepoName)
                 .font(.system(size: 15, weight: .semibold))
-                .help(repo.path)
+                .help(isPrivacyMasked ? "마스킹됨: 실제 로컬 경로는 숨김 처리 중입니다." : repo.path)
             BranchPicker(
                 currentBranch: repo.branch,
+                displayCurrentBranch: displayBranch(repo.branch),
                 branches: branches,
                 isDisabled: isRunning || repo.dirtyCount > 0,
                 onCheckout: onCheckout
@@ -522,7 +524,7 @@ struct RepositoryDashboardRow: View {
     private var repoBadges: some View {
         HStack(spacing: 8) {
             RepoStatusBadge(text: repo.syncLabel, color: statusColor)
-            RepoStatusBadge(text: repo.baseLabel, color: repo.needsBaseRebase ? .red : .blue)
+            RepoStatusBadge(text: isPrivacyMasked ? "기준 브랜치 sample-base" : repo.baseLabel, color: repo.needsBaseRebase ? .red : .blue)
             if !repo.autoSyncLabel.isEmpty {
                 RepoStatusBadge(text: repo.autoSyncLabel, color: .green, helpText: repo.autoSyncMessage)
             }
@@ -569,11 +571,32 @@ struct RepositoryDashboardRow: View {
             ],
             spacing: 8
         ) {
-            RepoSnapshotTile(title: "브랜치", value: repo.branch, detail: "기준 \(repo.baseBranch)", systemImage: "arrow.branch", tint: statusColor)
+            RepoSnapshotTile(title: "브랜치", value: displayBranch(repo.branch), detail: "기준 \(displayBranch(repo.baseBranch))", systemImage: "arrow.branch", tint: statusColor)
             RepoSnapshotTile(title: "동기화", value: compactSyncValue, detail: compactAheadBehind, systemImage: "arrow.triangle.2.circlepath", tint: syncTint)
-            RepoSnapshotTile(title: "오늘 작업", value: repo.todayCommitCount > 0 ? "\(repo.todayCommitCount)개" : "없음", detail: repo.todayCommitLines.first ?? "오늘 커밋 없음", systemImage: "clock", tint: repo.todayCommitCount > 0 ? .green : .secondary)
+            RepoSnapshotTile(title: "오늘 작업", value: repo.todayCommitCount > 0 ? "\(repo.todayCommitCount)개" : "없음", detail: displayCommitLine(repo.todayCommitLines.first ?? "오늘 커밋 없음"), systemImage: "clock", tint: repo.todayCommitCount > 0 ? .green : .secondary)
             RepoSnapshotTile(title: "PR/릴리즈", value: repo.githubSummaryAvailable ? "확인됨" : "정보 없음", detail: githubCompactDetail, systemImage: "arrow.triangle.pull", tint: repo.githubSummaryAvailable ? .blue : .secondary)
         }
+    }
+
+    private var displayRepoName: String {
+        isPrivacyMasked ? "sample-repo" : repo.name
+    }
+
+    private func displayBranch(_ branch: String) -> String {
+        guard isPrivacyMasked else { return branch }
+        if branch == repo.baseBranch {
+            return "sample-base"
+        }
+        return "feature/DEMO-123"
+    }
+
+    private func displayCommitLine(_ line: String) -> String {
+        guard isPrivacyMasked else { return line }
+        return line.replacingOccurrences(
+            of: #"[A-Z][A-Z0-9]+-\d+"#,
+            with: "DEMO-123",
+            options: .regularExpression
+        )
     }
 
     private var riskLevel: String {
@@ -647,6 +670,9 @@ struct RepositoryDashboardRow: View {
     }
 
     private var githubCompactDetail: String {
+        if isPrivacyMasked, repo.githubSummaryAvailable {
+            return "PR #12 · 최신 릴리즈 v0.0.0"
+        }
         if repo.pullRequestSummary.isEmpty && repo.releaseSummary.isEmpty {
             return "PR/릴리즈 없음"
         }
@@ -922,6 +948,7 @@ struct RepoStatusIcon: View {
 
 struct GitHubRepoOverviewView: View {
     let repo: LocalRepositoryOption
+    var isPrivacyMasked = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -938,13 +965,13 @@ struct GitHubRepoOverviewView: View {
             HStack(alignment: .top, spacing: 8) {
                 GitHubSummaryBox(
                     label: "PR",
-                    value: repo.pullRequestSummary.isEmpty ? "정보 없음" : repo.pullRequestSummary,
+                    value: privacyValue(repo.pullRequestSummary, fallback: "PR #12 샘플 작업 리뷰 대기"),
                     systemImage: "arrow.triangle.pull",
                     tint: repo.pullRequestSummary.isEmpty ? .secondary : .blue
                 )
                 GitHubSummaryBox(
                     label: "릴리즈",
-                    value: repo.releaseSummary.isEmpty ? "정보 없음" : repo.releaseSummary,
+                    value: privacyValue(repo.releaseSummary, fallback: "v0.0.0 샘플 릴리즈"),
                     systemImage: "tag",
                     tint: repo.releaseSummary.isEmpty ? .secondary : .green
                 )
@@ -959,6 +986,13 @@ struct GitHubRepoOverviewView: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color(nsColor: .separatorColor).opacity(0.55))
         )
+    }
+
+    private func privacyValue(_ value: String, fallback: String) -> String {
+        if value.isEmpty {
+            return "정보 없음"
+        }
+        return isPrivacyMasked ? fallback : value
     }
 }
 
@@ -1018,6 +1052,7 @@ struct GitHubSummaryLine: View {
 
 struct BranchPicker: View {
     let currentBranch: String
+    var displayCurrentBranch: String?
     let branches: [BranchOption]
     let isDisabled: Bool
     let onCheckout: (String) -> Void
@@ -1044,7 +1079,7 @@ struct BranchPicker: View {
             }
         } label: {
             HStack(spacing: 5) {
-                Text(currentBranch)
+                Text(displayCurrentBranch ?? currentBranch)
                     .lineLimit(1)
                 Image(systemName: "chevron.down")
                     .font(.caption2)
@@ -1064,6 +1099,7 @@ struct BranchPicker: View {
 struct TodayCommitInlineView: View {
     let repo: LocalRepositoryOption
     let visibleRows: Int
+    var isPrivacyMasked = false
 
     private var rowHeight: CGFloat {
         18
@@ -1095,8 +1131,8 @@ struct TodayCommitInlineView: View {
                             .lineLimit(1)
                             .truncationMode(.tail)
                     } else {
-                        ForEach(Array(repo.todayCommitLines.enumerated()), id: \.offset) { _, line in
-                            CommitPreviewLine(line: line)
+                        ForEach(Array(repo.todayCommitLines.enumerated()), id: \.offset) { index, line in
+                            CommitPreviewLine(line: line, maskedMessage: maskedCommitMessage(index: index, line: line))
                                 .frame(height: rowHeight)
                         }
                     }
@@ -1116,10 +1152,22 @@ struct TodayCommitInlineView: View {
         )
         .help(repo.todayCommitLabel)
     }
+
+    private func maskedCommitMessage(index: Int, line: String) -> String? {
+        guard isPrivacyMasked else { return nil }
+        let sample = [
+            "DEMO-123 작업 화면 흐름 정리",
+            "DEMO-123 저장소 상태 카드 개선",
+            "DEMO-123 보고서 초안 생성 기능 보강",
+            "DEMO-123 기록 타임라인 정리",
+        ]
+        return sample[index % sample.count]
+    }
 }
 
 struct CommitPreviewLine: View {
     let line: String
+    var maskedMessage: String?
 
     private var parts: (kind: String, time: String, hash: String, message: String) {
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1168,7 +1216,7 @@ struct CommitPreviewLine: View {
                     .lineLimit(1)
                     .frame(width: 50, alignment: .leading)
             }
-            Text(parts.message)
+            Text(maskedMessage ?? parts.message)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
