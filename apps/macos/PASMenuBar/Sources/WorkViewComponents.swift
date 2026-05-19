@@ -460,7 +460,7 @@ struct RepositoryDashboardRow: View {
 
                 VStack(alignment: .leading, spacing: 8) {
                     repoTitleRow
-                    repoBadges
+                    repoStatusSummary
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -468,7 +468,7 @@ struct RepositoryDashboardRow: View {
             repoSnapshotGrid
 
             if !repo.autoSyncMessage.isEmpty {
-                AutoSyncNotice(message: repo.autoSyncMessage)
+                AutoSyncNotice(message: repo.autoSyncMessage, summary: autoSyncSummary)
             } else if shouldShowGuidance {
                 RepoGuidanceView(
                     title: guidanceTitle,
@@ -532,19 +532,135 @@ struct RepositoryDashboardRow: View {
         }
     }
 
+    private var repoStatusSummary: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(guidanceTitle)
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(statusColor)
+                    .lineLimit(1)
+                Text(riskLevel)
+                    .font(.caption2.weight(.semibold))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(statusColor.opacity(0.12))
+                    .foregroundStyle(statusColor)
+                    .clipShape(Capsule())
+                Spacer(minLength: 0)
+            }
+
+            Text(statusSubtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            repoBadges
+        }
+    }
+
     private var repoSnapshotGrid: some View {
         LazyVGrid(
             columns: [
                 GridItem(.flexible(), spacing: 8),
                 GridItem(.flexible(), spacing: 8),
                 GridItem(.flexible(), spacing: 8),
+                GridItem(.flexible(), spacing: 8),
             ],
             spacing: 8
         ) {
-            RepoSnapshotTile(title: "브랜치", value: repo.branch, systemImage: "arrow.branch", tint: statusColor)
-            RepoSnapshotTile(title: "오늘 작업", value: repo.todayCommitCount > 0 ? "\(repo.todayCommitCount)개 · \(repo.todayCommitLatest)" : "오늘 커밋 없음", systemImage: "clock", tint: repo.todayCommitCount > 0 ? .green : .secondary)
-            RepoSnapshotTile(title: "PR/릴리즈", value: repo.githubSummaryAvailable ? "정보 있음" : "정보 없음", systemImage: "arrow.triangle.pull", tint: repo.githubSummaryAvailable ? .blue : .secondary)
+            RepoSnapshotTile(title: "브랜치", value: repo.branch, detail: "기준 \(repo.baseBranch)", systemImage: "arrow.branch", tint: statusColor)
+            RepoSnapshotTile(title: "동기화", value: compactSyncValue, detail: compactAheadBehind, systemImage: "arrow.triangle.2.circlepath", tint: syncTint)
+            RepoSnapshotTile(title: "오늘 작업", value: repo.todayCommitCount > 0 ? "\(repo.todayCommitCount)개" : "없음", detail: repo.todayCommitLines.first ?? "오늘 커밋 없음", systemImage: "clock", tint: repo.todayCommitCount > 0 ? .green : .secondary)
+            RepoSnapshotTile(title: "PR/릴리즈", value: repo.githubSummaryAvailable ? "확인됨" : "정보 없음", detail: githubCompactDetail, systemImage: "arrow.triangle.pull", tint: repo.githubSummaryAvailable ? .blue : .secondary)
         }
+    }
+
+    private var riskLevel: String {
+        if repo.isProtectedWorkflowBranch || !repo.baseRebaseAlert.isEmpty || repo.needsBaseRebase || repo.needsRebase {
+            return "높음"
+        }
+        if repo.dirtyCount > 0 || repo.needsUpdate || (repo.ahead ?? 0) > 0 || repo.isWorkingBranch {
+            return "확인"
+        }
+        return "정상"
+    }
+
+    private var statusSubtitle: String {
+        if !repo.autoSyncMessage.isEmpty {
+            return autoSyncSummary
+        }
+        if repo.dirtyCount > 0 {
+            return "\(repo.dirtyCount)개 변경 파일이 있습니다. 최신화나 rebase 전 커밋 또는 stash가 필요합니다."
+        }
+        if repo.needsBaseRebase {
+            return "현재 작업 브랜치가 기준 \(repo.baseBranch)보다 뒤처져 있습니다."
+        }
+        if repo.needsRebase {
+            return "원격과 로컬이 모두 움직였습니다. rebase 또는 merge 판단이 필요합니다."
+        }
+        if repo.canFastForward {
+            return "원격 변경을 fast-forward로 받을 수 있습니다."
+        }
+        if (repo.ahead ?? 0) > 0 {
+            return "로컬 커밋이 원격보다 앞서 있습니다."
+        }
+        if repo.isWorkingBranch {
+            return "작업 브랜치에서 진행 중입니다."
+        }
+        return "기준 브랜치 상태입니다."
+    }
+
+    private var compactSyncValue: String {
+        let ahead = repo.ahead ?? 0
+        let behind = repo.behind ?? 0
+        if ahead == 0 && behind == 0 {
+            return "동기화"
+        }
+        if ahead > 0 && behind > 0 {
+            return "분기"
+        }
+        if behind > 0 {
+            return "받기 필요"
+        }
+        if ahead > 0 {
+            return "올리기 필요"
+        }
+        return "upstream 없음"
+    }
+
+    private var compactAheadBehind: String {
+        guard repo.ahead != nil || repo.behind != nil else {
+            return "원격 추적 없음"
+        }
+        return "ahead \(repo.ahead ?? 0) · behind \(repo.behind ?? 0)"
+    }
+
+    private var syncTint: Color {
+        if repo.needsRebase || repo.needsUpdate {
+            return .orange
+        }
+        if (repo.ahead ?? 0) > 0 {
+            return .purple
+        }
+        return .green
+    }
+
+    private var githubCompactDetail: String {
+        if repo.pullRequestSummary.isEmpty && repo.releaseSummary.isEmpty {
+            return "PR/릴리즈 없음"
+        }
+        if !repo.pullRequestSummary.isEmpty {
+            return repo.pullRequestSummary
+        }
+        return repo.releaseSummary
+    }
+
+    private var autoSyncSummary: String {
+        repo.autoSyncMessage
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty } ?? "자동 처리 결과가 있습니다."
     }
 
     private var shouldShowGuidance: Bool {
@@ -694,11 +810,12 @@ struct RepositoryDashboardRow: View {
 struct RepoSnapshotTile: View {
     let title: String
     let value: String
+    let detail: String
     let systemImage: String
     let tint: Color
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(alignment: .top, spacing: 7) {
             Image(systemName: systemImage)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(tint.opacity(0.86))
@@ -711,33 +828,66 @@ struct RepoSnapshotTile: View {
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
                     .truncationMode(.tail)
+                Text(detail.isEmpty ? "-" : detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
             Spacer(minLength: 0)
         }
         .padding(8)
         .background(Color(nsColor: .controlBackgroundColor).opacity(0.58))
         .clipShape(RoundedRectangle(cornerRadius: 8))
-        .help(value)
+        .help("\(title): \(value)\n\(detail)")
     }
 }
 
 struct AutoSyncNotice: View {
     let message: String
+    let summary: String
+    @State private var isExpanded = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "checkmark.arrow.trianglehead.counterclockwise")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.green)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("자동 처리됨")
-                    .font(.caption.weight(.semibold))
-                Text(message)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+        VStack(alignment: .leading, spacing: 7) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.16)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "checkmark.arrow.trianglehead.counterclockwise")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.green)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("자동 처리됨")
+                            .font(.caption.weight(.semibold))
+                        Text(summary)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.down")
+                        .font(.caption2.weight(.semibold))
+                        .rotationEffect(.degrees(isExpanded ? 0 : -90))
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
             }
-            Spacer(minLength: 0)
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                Text(message)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color(nsColor: .textBackgroundColor).opacity(0.56))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
         }
         .padding(9)
         .background(Color.green.opacity(0.08))
@@ -785,8 +935,20 @@ struct GitHubRepoOverviewView: View {
                 Spacer(minLength: 0)
             }
 
-            GitHubSummaryLine(label: "PR", value: repo.pullRequestSummary.isEmpty ? "PR 정보 없음" : repo.pullRequestSummary)
-            GitHubSummaryLine(label: "릴리즈", value: repo.releaseSummary.isEmpty ? "릴리즈 정보 없음" : repo.releaseSummary)
+            HStack(alignment: .top, spacing: 8) {
+                GitHubSummaryBox(
+                    label: "PR",
+                    value: repo.pullRequestSummary.isEmpty ? "정보 없음" : repo.pullRequestSummary,
+                    systemImage: "arrow.triangle.pull",
+                    tint: repo.pullRequestSummary.isEmpty ? .secondary : .blue
+                )
+                GitHubSummaryBox(
+                    label: "릴리즈",
+                    value: repo.releaseSummary.isEmpty ? "정보 없음" : repo.releaseSummary,
+                    systemImage: "tag",
+                    tint: repo.releaseSummary.isEmpty ? .secondary : .green
+                )
+            }
         }
         .padding(.horizontal, 9)
         .padding(.vertical, 7)
@@ -797,6 +959,38 @@ struct GitHubRepoOverviewView: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(Color(nsColor: .separatorColor).opacity(0.55))
         )
+    }
+}
+
+struct GitHubSummaryBox: View {
+    let label: String
+    let value: String
+    let systemImage: String
+    let tint: Color
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(tint)
+                .frame(width: 14)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(label)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .truncationMode(.tail)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(nsColor: .textBackgroundColor).opacity(0.42))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .help(value)
     }
 }
 
