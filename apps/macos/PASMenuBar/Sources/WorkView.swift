@@ -35,6 +35,7 @@ struct WorkView: View {
     @State private var jiraMorningItems: [JiraListItem] = []
     @State private var jiraNewItems: [JiraListItem] = []
     @State private var jiraLastUpdatedText = ""
+    @State private var issueRepositoryLinks: [IssueRepositoryLinkRecord] = []
     @State private var hasAutoLoadedJiraMorningItems = false
     @State private var hasPreloadedBriefingData = false
     @State private var jiraTeamFlowItems: [JiraFlowItem] = []
@@ -123,6 +124,17 @@ struct WorkView: View {
         repositories.filter(\.needsUpdate).count
     }
 
+    private var linkedIssueCount: Int {
+        Set(issueRepositoryLinks.map(\.issueKey)).count
+    }
+
+    private var activeIssueBranchCount: Int {
+        let keys = Set(issueRepositoryLinks.map(\.issueKey))
+        return keys.filter { key in
+            repositories.contains { $0.branch.localizedCaseInsensitiveContains(key) }
+        }.count
+    }
+
     private var recentBriefingMemories: [String] {
         briefingMemoryLog
             .split(separator: "\n")
@@ -146,6 +158,10 @@ struct WorkView: View {
 
     private var selectedReport: SubmittedReportRecord? {
         submittedReports.first { $0.id == selectedReportID } ?? submittedReports.first
+    }
+
+    private var issueRepositoryLinksByKey: [String: [IssueRepositoryLinkRecord]] {
+        Dictionary(grouping: issueRepositoryLinks, by: \.issueKey)
     }
 
     private var selectedRecordDateString: String {
@@ -539,6 +555,13 @@ struct WorkView: View {
                         briefingMetric(title: "정비 필요", value: "\(pendingRepositoryCount)", systemImage: "arrow.triangle.2.circlepath", tint: .red, isAttention: pendingRepositoryCount > 0)
                     }
 
+                    HStack(spacing: 8) {
+                        dashboardFlowChip(title: "연결된 Jira", value: "\(linkedIssueCount)", systemImage: "link", tint: .blue)
+                        dashboardFlowChip(title: "브랜치 진행", value: "\(activeIssueBranchCount)", systemImage: "arrow.branch", tint: .green)
+                        dashboardFlowChip(title: "Codex", value: codexHealth.isAvailable ? "준비됨" : "점검", systemImage: "sparkles", tint: codexHealth.isAvailable ? .green : .orange)
+                        Spacer(minLength: 0)
+                    }
+
                 }
             }
 
@@ -579,12 +602,14 @@ struct WorkView: View {
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(jiraMorningItems.prefix(4)) { item in
+                        let workState = issueWorkState(for: item)
                         HStack(spacing: 8) {
                             flowTag(item.key, tint: .blue)
                             Text(item.title.isEmpty ? "제목 없음" : item.title)
                                 .font(.caption.weight(.semibold))
                                 .lineLimit(1)
                             Spacer()
+                            IssueWorkStateBadge(state: workState)
                             jiraMetaChip(item.statusText, tint: flowTint(for: item.statusText))
                         }
                         .padding(8)
@@ -619,6 +644,24 @@ struct WorkView: View {
             RoundedRectangle(cornerRadius: 8)
                 .stroke(isAttention ? tint.opacity(0.34) : Color(nsColor: .separatorColor).opacity(0.35))
         )
+    }
+
+    private func dashboardFlowChip(title: String, value: String, systemImage: String, tint: Color) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .semibold))
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(tint.opacity(0.08))
+        .foregroundStyle(tint)
+        .clipShape(Capsule())
     }
 
     private func briefingChannelBadge(title: String, systemImage: String, state: String, tint: Color) -> some View {
@@ -1478,10 +1521,22 @@ struct WorkView: View {
                     EmptyDashboardState(systemImage: systemImage, title: emptyTitle, message: emptyMessage)
                 } else {
                     ForEach(items) { item in
-                        JiraIssueRow(item: item) {
-                            if let link = item.link, !link.isEmpty {
-                                runner.openExternalURL(link)
+                        VStack(alignment: .leading, spacing: 8) {
+                            JiraIssueRow(item: item) {
+                                if let link = item.link, !link.isEmpty {
+                                    runner.openExternalURL(link)
+                                }
                             }
+                            HStack(spacing: 8) {
+                                IssueWorkStateBadge(state: issueWorkState(for: item))
+                                Text(issueWorkState(for: item).detail)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.bottom, 2)
                         }
                     }
                 }
@@ -2240,7 +2295,8 @@ struct WorkView: View {
         async let records: Void = loadRecords(skipJiraFlow: true)
         async let memoTargets: [MemoTargetOption] = runner.loadMemoTargets()
         async let codex: Void = loadCodexHealth()
-        _ = await (briefing, records, memoTargets, codex)
+        async let issueLinks: Void = loadIssueRepositoryLinks()
+        _ = await (briefing, records, memoTargets, codex, issueLinks)
         isInitialDataLoading = false
     }
 
@@ -2252,6 +2308,7 @@ struct WorkView: View {
         } else {
             repositories = orderedRepositories(await runner.loadManagedRepositories())
         }
+        await loadIssueRepositoryLinks()
         syncRepositoryOrder()
         await loadBranchOptions()
         isLoading = false
@@ -2401,6 +2458,16 @@ struct WorkView: View {
         PASRunner.needsRepositorySelection(message)
     }
 
+    private func issueWorkState(for item: JiraListItem) -> IssueWorkState {
+        let key = item.key.uppercased()
+        let links = issueRepositoryLinksByKey[key] ?? []
+        let activeRepos = repositories.filter { repo in
+            repo.branch.localizedCaseInsensitiveContains(key)
+                || repo.todayCommitLines.contains { $0.localizedCaseInsensitiveContains(key) }
+        }
+        return IssueWorkState(linkedRepositories: links, activeRepositories: activeRepos)
+    }
+
     private func loadSelectedIssueDetailIfNeeded(force: Bool) async {
         guard !runner.isPersonalProfile else {
             selectedIssueDetail = .empty
@@ -2499,6 +2566,14 @@ struct WorkView: View {
 
     private func loadCodexHealth() async {
         codexHealth = await runner.loadCodexHealth()
+    }
+
+    private func loadIssueRepositoryLinks() async {
+        guard !runner.isPersonalProfile else {
+            issueRepositoryLinks = []
+            return
+        }
+        issueRepositoryLinks = await runner.loadIssueRepositoryLinkRecords()
     }
 
     private var overtimePanel: some View {

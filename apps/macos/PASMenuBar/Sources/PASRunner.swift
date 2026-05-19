@@ -855,6 +855,15 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         return result.output.isEmpty ? result.summary : result.output
     }
 
+    func loadIssueRepositoryLinkRecords() async -> [IssueRepositoryLinkRecord] {
+        let result = await Self.executeDetached(["jira", "repo-links", "--format", "tsv"])
+        if !result.succeeded {
+            status = "Jira repository 연결 목록 조회 실패"
+            return []
+        }
+        return Self.parseIssueRepositoryLinks(result.output)
+    }
+
     func loadTodayCommits(path: String) async -> String {
         status = "오늘 커밋을 불러오는 중..."
         let result = await Self.executeDetached(["repo", "commits", "--repo", path])
@@ -1807,6 +1816,22 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
                     .replacingOccurrences(of: key, with: "")
                     .trimmingCharacters(in: CharacterSet(charactersIn: " -|[]").union(.whitespacesAndNewlines))
                 return MemoTargetOption(type: "jira", targetID: key, title: title.isEmpty ? key : title, subtitle: key)
+            }
+    }
+
+    private nonisolated static func parseIssueRepositoryLinks(_ output: String) -> [IssueRepositoryLinkRecord] {
+        output
+            .split(separator: "\n")
+            .compactMap { line in
+                let parts = line.split(separator: "\t", omittingEmptySubsequences: false)
+                guard parts.count >= 5 else { return nil }
+                return IssueRepositoryLinkRecord(
+                    issueKey: String(parts[0]),
+                    repoPath: String(parts[1]),
+                    repoName: String(parts[2]),
+                    summary: String(parts[3]),
+                    updatedAt: String(parts[4])
+                )
             }
     }
 

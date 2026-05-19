@@ -1392,8 +1392,17 @@ struct WorkNoticeDiagnosticView: View {
         if message.contains("Jira API 토큰") || message.contains("Unauthorized") || message.contains("401") {
             return "Jira 인증을 확인해야 합니다"
         }
+        if message.contains("gh auth") || message.contains("GitHub CLI") || message.localizedCaseInsensitiveContains("authentication required") {
+            return "GitHub CLI 인증을 확인해야 합니다"
+        }
         if PASRunner.needsRepositorySelection(message) {
             return "작업할 repository 선택이 필요합니다"
+        }
+        if message.localizedCaseInsensitiveContains("conflict") || message.contains("충돌") || message.contains("CONFLICT") {
+            return "Git 충돌 확인이 필요합니다"
+        }
+        if message.localizedCaseInsensitiveContains("rebase") || message.contains("리베이스") {
+            return "rebase 상태 확인이 필요합니다"
         }
         if message.contains("Codex CLI") || message.contains("codex") {
             return "Codex 실행 상태를 확인해야 합니다"
@@ -1414,8 +1423,17 @@ struct WorkNoticeDiagnosticView: View {
         if message.contains("Jira API 토큰") || message.contains("Unauthorized") || message.contains("401") {
             return "설정의 Jira URL, 이메일, API Token이 유효한지 확인해 주세요. 토큰을 갱신했다면 설정 저장 후 다시 시도하면 됩니다."
         }
+        if message.contains("gh auth") || message.contains("GitHub CLI") || message.localizedCaseInsensitiveContains("authentication required") {
+            return "터미널에서 gh auth status를 확인하고, 필요하면 gh auth login을 다시 진행하세요. 조직 repository는 SSO 승인도 확인해야 합니다."
+        }
         if PASRunner.needsRepositorySelection(message) {
             return "이 Jira 일감과 연결된 저장소가 없거나 여러 개입니다. repository 연결 창에서 작업할 저장소를 선택한 뒤 다시 시작하세요."
+        }
+        if message.localizedCaseInsensitiveContains("conflict") || message.contains("충돌") || message.contains("CONFLICT") {
+            return "자동 처리 중 충돌이 난 상태입니다. 충돌 파일을 확인한 뒤 수동으로 정리하고 다시 실행하세요."
+        }
+        if message.localizedCaseInsensitiveContains("rebase") || message.contains("리베이스") {
+            return "현재 브랜치와 기준 브랜치의 차이를 확인하세요. 자동 rebase가 실패했다면 충돌 또는 로컬 변경분이 있는지 먼저 보는 게 좋습니다."
         }
         if message.contains("Codex CLI") || message.contains("codex") {
             return "Codex CLI 설치/로그인 상태를 확인해 주세요. 대시보드 상단의 Codex 상태 칩으로 다시 점검할 수 있습니다."
