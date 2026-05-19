@@ -473,71 +473,23 @@ struct WorkView: View {
         VStack(alignment: .leading, spacing: 16) {
             DashboardPanel(title: "오늘 개발 상황판", systemImage: "rectangle.grid.2x2") {
                 HStack(spacing: 6) {
-                    panelActionChip(title: "브리핑", systemImage: "doc.text") {
-                        Task {
-                            await runDashboardCommand(
-                                ["routine", "morning", "--dry-run"],
-                                title: "출근 브리핑",
-                                running: "출근 브리핑을 만드는 중...",
-                                success: "출근 브리핑 완료",
-                                failure: "출근 브리핑 실패"
-                            )
-                            rememberBriefing("출근 브리핑 미리보기 생성")
-                        }
-                    }
-                    .disabled(runner.isRunning)
-
-                    if !runner.isPersonalProfile {
-                        panelActionChip(title: "Slack", systemImage: "paperplane.fill") {
-                            Task {
-                                await runDashboardCommand(
-                                    ["routine", "morning", "--send-slack"],
-                                    title: "출근 브리핑 공유",
-                                    running: "출근 브리핑을 Slack으로 공유하는 중...",
-                                    success: "출근 브리핑을 Slack으로 공유했습니다",
-                                    failure: "출근 브리핑 공유 실패"
-                                )
-                                rememberBriefing("출근 브리핑 Slack 공유")
-                            }
-                        }
-                        .disabled(runner.isRunning)
-                    }
-
-                    panelActionChip(title: "퇴근", systemImage: "checkmark.seal") {
-                        Task {
-                            await runDashboardCommand(
-                                ["routine", "evening", "--dry-run"],
-                                title: "퇴근 전 점검",
-                                running: "퇴근 전 점검을 만드는 중...",
-                                success: "퇴근 전 점검 완료",
-                                failure: "퇴근 전 점검 실패"
-                            )
-                            rememberBriefing("퇴근 전 점검 미리보기 생성")
-                        }
-                    }
-                    .disabled(runner.isRunning)
-
                     panelActionChip(title: "작업 시작", systemImage: "arrow.branch") {
                         selectedSection = "work"
                     }
+                    dashboardRoutineMenu
                 }
             } content: {
                 VStack(alignment: .leading, spacing: 14) {
-                    HStack(alignment: .firstTextBaseline) {
+                    HStack(alignment: .center) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(todayTitle)
                                 .font(.title2.weight(.semibold))
-                            Text(runner.isPersonalProfile ? "개인 프로젝트 진행 상태" : "오늘 할 일과 저장소 위험 신호")
+                            Text(primaryDashboardGuidance)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        Spacer()
-                        HStack(spacing: 8) {
-                            codexHealthChip
-                            briefingChannelBadge(title: "Slack", systemImage: "paperplane.fill", state: runner.isPersonalProfile ? "숨김" : "전송", tint: .green)
-                            briefingChannelBadge(title: "앱 알림", systemImage: "bell.badge", state: "예정", tint: .orange)
-                            briefingChannelBadge(title: "앱 내부", systemImage: "rectangle.stack", state: "활성", tint: .blue)
-                        }
+                        Spacer(minLength: 8)
+                        codexHealthChip
                     }
 
                     LazyVGrid(
@@ -558,7 +510,7 @@ struct WorkView: View {
                     HStack(spacing: 8) {
                         dashboardFlowChip(title: "연결된 Jira", value: "\(linkedIssueCount)", systemImage: "link", tint: .blue)
                         dashboardFlowChip(title: "브랜치 진행", value: "\(activeIssueBranchCount)", systemImage: "arrow.branch", tint: .green)
-                        dashboardFlowChip(title: "Codex", value: codexHealth.isAvailable ? "준비됨" : "점검", systemImage: "sparkles", tint: codexHealth.isAvailable ? .green : .orange)
+                        dashboardFlowChip(title: "보고서", value: reportDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "대기" : "작성중", systemImage: "doc.text", tint: .purple)
                         Spacer(minLength: 0)
                     }
 
@@ -579,6 +531,79 @@ struct WorkView: View {
                 briefingMemoryPanel
             }
         }
+    }
+
+    private var primaryDashboardGuidance: String {
+        if runner.isPersonalProfile {
+            return activeRepositoryCount > 0 ? "진행 중인 개인 프로젝트 \(activeRepositoryCount)개를 확인하세요." : "개인 프로젝트 저장소를 연결하면 진행 상태가 표시됩니다."
+        }
+        if jiraMorningItems.isEmpty {
+            return "Jira 일감이 비어 있습니다. 새로고침으로 오늘 작업을 확인하세요."
+        }
+        if activeIssueBranchCount > 0 {
+            return "진행 중인 브랜치 \(activeIssueBranchCount)개가 있습니다. 이어서 작업하거나 보고서를 정리하세요."
+        }
+        return "오늘 할 일 \(jiraMorningItems.count)개 중 시작할 일감을 선택하세요."
+    }
+
+    private var dashboardRoutineMenu: some View {
+        Menu {
+            Button {
+                Task {
+                    await runDashboardCommand(
+                        ["routine", "morning", "--dry-run"],
+                        title: "출근 브리핑",
+                        running: "출근 브리핑을 만드는 중...",
+                        success: "출근 브리핑 완료",
+                        failure: "출근 브리핑 실패"
+                    )
+                    rememberBriefing("출근 브리핑 미리보기 생성")
+                }
+            } label: {
+                Label("브리핑 미리보기", systemImage: "doc.text")
+            }
+
+            if !runner.isPersonalProfile {
+                Button {
+                    Task {
+                        await runDashboardCommand(
+                            ["routine", "morning", "--send-slack"],
+                            title: "출근 브리핑 공유",
+                            running: "출근 브리핑을 Slack으로 공유하는 중...",
+                            success: "출근 브리핑을 Slack으로 공유했습니다",
+                            failure: "출근 브리핑 공유 실패"
+                        )
+                        rememberBriefing("출근 브리핑 Slack 공유")
+                    }
+                } label: {
+                    Label("Slack 공유", systemImage: "paperplane.fill")
+                }
+            }
+
+            Button {
+                Task {
+                    await runDashboardCommand(
+                        ["routine", "evening", "--dry-run"],
+                        title: "퇴근 전 점검",
+                        running: "퇴근 전 점검을 만드는 중...",
+                        success: "퇴근 전 점검 완료",
+                        failure: "퇴근 전 점검 실패"
+                    )
+                    rememberBriefing("퇴근 전 점검 미리보기 생성")
+                }
+            } label: {
+                Label("퇴근 전 점검", systemImage: "checkmark.seal")
+            }
+        } label: {
+            Label("루틴", systemImage: "ellipsis.circle")
+                .font(.caption2.weight(.semibold))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(Color(nsColor: .controlBackgroundColor).opacity(0.72))
+                .clipShape(Capsule())
+        }
+        .menuStyle(.borderlessButton)
+        .disabled(runner.isRunning)
     }
 
     private var compactTodayWorkPanel: some View {
@@ -826,14 +851,9 @@ struct WorkView: View {
             }
 
             if let item = selectedWorkIssue {
+                let workState = issueWorkState(for: item)
                 HStack(spacing: 7) {
-                    startFlowStep("1", "일감 선택", isActive: true)
-                    startFlowConnector
-                    startFlowStep("2", "저장소 연결", isActive: true)
-                    startFlowConnector
-                    startFlowStep("3", "브랜치 생성", isActive: true)
-                    startFlowConnector
-                    startFlowStep("4", "Codex 요청", isActive: true)
+                    IssueStartFlowStrip(state: workState, codexReady: codexHealth.isAvailable)
                     Spacer(minLength: 0)
                     Text(item.title)
                         .font(.caption)
@@ -987,49 +1007,38 @@ struct WorkView: View {
         return jiraMorningItems.first
     }
 
-    private var startFlowConnector: some View {
-        Rectangle()
-            .fill(Color(nsColor: .separatorColor).opacity(0.5))
-            .frame(width: 18, height: 1)
-    }
-
-    private func startFlowStep(_ number: String, _ title: String, isActive: Bool) -> some View {
-        HStack(spacing: 5) {
-            Text(number)
-                .font(.caption2.weight(.bold))
-                .frame(width: 17, height: 17)
-                .background(isActive ? Color.accentColor.opacity(0.16) : Color(nsColor: .controlBackgroundColor))
-                .foregroundStyle(isActive ? Color.accentColor : Color.secondary)
-                .clipShape(Circle())
-            Text(title)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(isActive ? Color.primary : Color.secondary)
-        }
-    }
-
     private func myJiraWorkCard(_ item: JiraListItem) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+        let workState = issueWorkState(for: item)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 8) {
                 flowTag(item.key, tint: .blue)
-                flowTag("태그 \(item.key)", tint: .purple)
-                jiraMetaChip(item.statusText, tint: flowTint(for: item.statusText))
-                if item.priorityText != "-" {
-                    jiraMetaChip(item.priorityText, tint: item.priorityText.contains("High") || item.priorityText.contains("높") ? .orange : .secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.title.isEmpty ? "제목 없음" : item.title)
+                        .font(.headline)
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 7) {
+                        IssueWorkStateBadge(state: workState)
+                        jiraMetaChip(item.statusText, tint: flowTint(for: item.statusText))
+                        if item.priorityText != "-" {
+                            jiraMetaChip(item.priorityText, tint: item.priorityText.contains("High") || item.priorityText.contains("높") ? .orange : .secondary)
+                        }
+                        if item.dueText != "-" {
+                            jiraMetaChip(item.dueText, tint: .red)
+                        }
+                    }
                 }
                 Spacer(minLength: 8)
-                if item.dueText != "-" {
-                    Label(item.dueText, systemImage: "calendar")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(Color.red.opacity(0.82))
-                        .lineLimit(1)
+                Button {
+                    Task { await startFullIssueFlow(item) }
+                } label: {
+                    Label("시작", systemImage: "play.fill")
                 }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(runner.isRunning)
+                issueMoreMenu(item)
             }
-
-            Text(item.title.isEmpty ? "제목 없음" : item.title)
-                .font(.headline)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
 
             if !item.bodyText.isEmpty {
                 Text(item.bodyText)
@@ -1049,30 +1058,7 @@ struct WorkView: View {
             Divider()
                 .opacity(0.58)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    issueActionButton("연결/태그", systemImage: "link.badge.plus") {
-                        runner.openIssueRepositoryLinkWindow(issue: item.key, summary: item.title)
-                    }
-                    issueActionButton("이 일감 시작", systemImage: "play.fill") {
-                        Task { await startFullIssueFlow(item) }
-                    }
-                    issueActionButton("추적", systemImage: "point.3.connected.trianglepath.dotted") {
-                        Task { await traceIssueWork(item) }
-                    }
-                    issueActionButton("추천", systemImage: "sparkles") {
-                        Task { await recommendIssueRepository(item) }
-                    }
-                    issueActionButton("Codex", systemImage: "sparkles.rectangle.stack") {
-                        Task { await openCodexWorkspace(item) }
-                    }
-                    if let link = item.link, !link.isEmpty {
-                        issueActionButton("Jira", systemImage: "arrow.up.right.square") {
-                            runner.openExternalURL(link)
-                        }
-                    }
-                }
-            }
+            IssueStartFlowStrip(state: workState, codexReady: codexHealth.isAvailable)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1085,22 +1071,50 @@ struct WorkView: View {
         .contentShape(Rectangle())
     }
 
-    private func issueActionButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .font(.caption2.weight(.semibold))
-                .lineLimit(1)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .background(Color(nsColor: .controlBackgroundColor).opacity(0.70))
-                .clipShape(Capsule())
-                .overlay(
-                    Capsule()
-                        .stroke(Color(nsColor: .separatorColor).opacity(0.30))
-                )
+    private var startFlowConnector: some View {
+        Rectangle()
+            .fill(Color(nsColor: .separatorColor).opacity(0.5))
+            .frame(width: 18, height: 1)
+    }
+
+    private func issueMoreMenu(_ item: JiraListItem) -> some View {
+        Menu {
+            Button {
+                runner.openIssueRepositoryLinkWindow(issue: item.key, summary: item.title)
+            } label: {
+                Label("저장소 연결/태그", systemImage: "link.badge.plus")
+            }
+            Button {
+                Task { await traceIssueWork(item) }
+            } label: {
+                Label("작업 추적", systemImage: "point.3.connected.trianglepath.dotted")
+            }
+            Button {
+                Task { await recommendIssueRepository(item) }
+            } label: {
+                Label("저장소 추천", systemImage: "sparkles")
+            }
+            Button {
+                Task { await openCodexWorkspace(item) }
+            } label: {
+                Label("Codex 열기", systemImage: "sparkles.rectangle.stack")
+            }
+            if let link = item.link, !link.isEmpty {
+                Divider()
+                Button {
+                    runner.openExternalURL(link)
+                } label: {
+                    Label("Jira에서 열기", systemImage: "arrow.up.right.square")
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.system(size: 16, weight: .semibold))
+                .frame(width: 26, height: 26)
         }
-        .buttonStyle(.plain)
+        .menuStyle(.borderlessButton)
         .disabled(runner.isRunning)
+        .help("추가 작업")
     }
 
     private func jiraMetaChip(_ text: String, tint: Color) -> some View {
@@ -2132,7 +2146,34 @@ struct WorkView: View {
     }
 
     private var recordsTimelineView: some View {
-        RecordsTimelineView(selectedDate: $selectedRecordDate, items: recordTimelineItems)
+        RecordsTimelineView(
+            selectedDate: $selectedRecordDate,
+            items: recordTimelineItems,
+            summary: recordDaySummaryText
+        )
+    }
+
+    private var recordDaySummaryText: String {
+        if recordTimelineItems.isEmpty {
+            return "이 날짜에는 아직 저장된 작업 기록이 없습니다."
+        }
+        var parts: [String] = []
+        if !selectedDayReports.isEmpty {
+            parts.append("보고서 \(selectedDayReports.count)건")
+        }
+        if !selectedDayMemos.isEmpty {
+            parts.append("메모 \(selectedDayMemos.count)건")
+        }
+        if !selectedDayJiraFlowItems.isEmpty {
+            parts.append("Jira 흐름 \(selectedDayJiraFlowItems.count)건")
+        }
+        if !selectedDayOvertimeRecords.isEmpty {
+            parts.append("연장근무 \(selectedDayOvertimeRecords.count)건")
+        }
+        if Calendar.current.isDateInToday(selectedRecordDate), todayWorkCountForReport > 0 {
+            parts.append("오늘 커밋 \(todayWorkCountForReport)건")
+        }
+        return "\(formatKoreanDate(selectedRecordDate))에는 \(parts.joined(separator: ", "))이 기록되어 있습니다."
     }
 
     private var selectedReportDetail: some View {

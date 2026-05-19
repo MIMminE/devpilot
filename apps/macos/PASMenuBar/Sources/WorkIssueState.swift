@@ -57,6 +57,45 @@ struct IssueWorkState {
     static let empty = IssueWorkState(linkedRepositories: [], activeRepositories: [])
 }
 
+struct IssueStartFlowStrip: View {
+    let state: IssueWorkState
+    let codexReady: Bool
+
+    var body: some View {
+        HStack(spacing: 7) {
+            flowStep("1", "일감", isReady: true, tint: .blue)
+            connector
+            flowStep("2", "저장소", isReady: state.isLinked, tint: .blue)
+            connector
+            flowStep("3", "브랜치", isReady: state.hasActiveBranch, tint: .green)
+            connector
+            flowStep("4", "Codex", isReady: codexReady, tint: codexReady ? .green : .orange)
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var connector: some View {
+        Rectangle()
+            .fill(Color(nsColor: .separatorColor).opacity(0.46))
+            .frame(width: 16, height: 1)
+    }
+
+    private func flowStep(_ number: String, _ title: String, isReady: Bool, tint: Color) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: isReady ? "checkmark.circle.fill" : "\(number).circle")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isReady ? tint : Color.secondary)
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(isReady ? .primary : .secondary)
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background((isReady ? tint : Color.secondary).opacity(0.08))
+        .clipShape(Capsule())
+    }
+}
+
 struct IssueWorkStateBadge: View {
     let state: IssueWorkState
 

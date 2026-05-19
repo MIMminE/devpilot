@@ -44,6 +44,7 @@ struct RecordDaySummaryStrip: View {
 struct RecordsTimelineView: View {
     @Binding var selectedDate: Date
     let items: [RecordTimelineItem]
+    let summary: String
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -63,6 +64,20 @@ struct RecordsTimelineView: View {
                 }
                 .buttonStyle(.bordered)
             }
+
+            HStack(spacing: 8) {
+                Image(systemName: "sparkle.magnifyingglass")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                Text(summary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                Spacer(minLength: 0)
+            }
+            .padding(10)
+            .background(Color.accentColor.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
 
             if items.isEmpty {
                 EmptyDashboardState(
