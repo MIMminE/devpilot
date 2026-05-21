@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct QuickMemoView: View {
-    @ObservedObject var runner: PASRunner
+    @ObservedObject var runner: DevPilotRunner
 
     @State private var targets: [MemoTargetOption] = [.general]
     @State private var selectedTargetID = MemoTargetOption.general.id

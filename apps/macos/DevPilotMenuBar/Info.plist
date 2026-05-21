@@ -3,13 +3,13 @@
 <plist version="1.0">
 <dict>
   <key>CFBundleExecutable</key>
-  <string>PASMenuBar</string>
+  <string>DevPilotMenuBar</string>
   <key>CFBundleIdentifier</key>
-  <string>dev.mimine.pas</string>
+  <string>dev.mimine.devpilot</string>
   <key>CFBundleName</key>
-  <string>PAS</string>
+  <string>DevPilot</string>
   <key>CFBundleDisplayName</key>
-  <string>PAS</string>
+  <string>DevPilot</string>
   <key>CFBundleIconFile</key>
   <string>AppIcon</string>
   <key>CFBundlePackageType</key>
@@ -20,10 +20,10 @@
   <array>
     <dict>
       <key>CFBundleURLName</key>
-      <string>dev.mimine.pas</string>
+      <string>dev.mimine.devpilot</string>
       <key>CFBundleURLSchemes</key>
       <array>
-        <string>pas</string>
+        <string>devpilot</string>
       </array>
     </dict>
   </array>

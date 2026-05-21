@@ -30,7 +30,7 @@ struct WorkSidebarView: View {
     @Binding var selectedSection: String
     @Binding var isCollapsed: Bool
     let activeProfileID: String
-    let profiles: [PASProfile]
+    let profiles: [DevPilotProfile]
     let repositoryCount: Int
     let reportReady: Bool
     let onProfileChange: (String) -> Void
@@ -142,7 +142,7 @@ struct WorkSidebarView: View {
 
             if !isCollapsed {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("PAS")
+                    Text("DevPilot")
                         .font(.headline)
                     Text("Work")
                         .font(.caption)
@@ -200,8 +200,8 @@ struct WorkSidebarView: View {
         }
     }
 
-    private var activeProfile: PASProfile {
-        PASProfile.profile(for: activeProfileID) ?? .work
+    private var activeProfile: DevPilotProfile {
+        DevPilotProfile.profile(for: activeProfileID) ?? .work
     }
 
     private var profileSelection: Binding<String> {
@@ -1462,7 +1462,7 @@ struct WorkNoticeDiagnosticView: View {
         if message.contains("gh auth") || message.contains("GitHub CLI") || message.localizedCaseInsensitiveContains("authentication required") {
             return "GitHub CLI 인증을 확인해야 합니다"
         }
-        if PASRunner.needsRepositorySelection(message) {
+        if DevPilotRunner.needsRepositorySelection(message) {
             return "작업할 repository 선택이 필요합니다"
         }
         if message.localizedCaseInsensitiveContains("conflict") || message.contains("충돌") || message.contains("CONFLICT") {
@@ -1493,7 +1493,7 @@ struct WorkNoticeDiagnosticView: View {
         if message.contains("gh auth") || message.contains("GitHub CLI") || message.localizedCaseInsensitiveContains("authentication required") {
             return "터미널에서 gh auth status를 확인하고, 필요하면 gh auth login을 다시 진행하세요. 조직 repository는 SSO 승인도 확인해야 합니다."
         }
-        if PASRunner.needsRepositorySelection(message) {
+        if DevPilotRunner.needsRepositorySelection(message) {
             return "이 Jira 일감과 연결된 저장소가 없거나 여러 개입니다. repository 연결 창에서 작업할 저장소를 선택한 뒤 다시 시작하세요."
         }
         if message.localizedCaseInsensitiveContains("conflict") || message.contains("충돌") || message.contains("CONFLICT") {

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ProfileBadge: View {
-    let profile: PASProfile
+    let profile: DevPilotProfile
 
     var body: some View {
         Label(profile.title, systemImage: profile.systemImage)
@@ -109,7 +109,7 @@ struct GuideBox: View {
     let title: String
     let lines: [String]
     let buttons: [GuideButton]
-    let runner: PASRunner
+    let runner: DevPilotRunner
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {

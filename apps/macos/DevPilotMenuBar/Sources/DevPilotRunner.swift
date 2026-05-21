@@ -6,13 +6,13 @@ import UniformTypeIdentifiers
 import UserNotifications
 
 @MainActor
-final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
+final class DevPilotRunner: NSObject, ObservableObject, NSWindowDelegate {
     @Published var isRunning = false
     @Published var status = "대기 중"
     @Published var lastOutput = ""
     @Published var isHandlingDeepLink = false
-    @Published var activeProfileID = PASProfile.work.id
-    @Published var activeProfileIDs: Set<String> = [PASProfile.work.id]
+    @Published var activeProfileID = DevPilotProfile.work.id
+    @Published var activeProfileIDs: Set<String> = [DevPilotProfile.work.id]
     @Published var isSetupOpen = false
     @Published private(set) var memoTargets: [MemoTargetOption] = [.general]
 
@@ -52,7 +52,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
                 self.isRunning = false
                 if self.shouldShowOutput(arguments: arguments, succeeded: result.succeeded) {
                     self.openOutputWindow(
-                        title: result.succeeded ? "PAS 실행 결과" : "PAS 오류 상세",
+                        title: result.succeeded ? "DevPilot 실행 결과" : "DevPilot 오류 상세",
                         output: result.output.isEmpty ? result.summary : result.output
                     )
                 }
@@ -67,7 +67,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
     }
 
     func switchProfile(to profileID: String) {
-        guard PASProfile.profile(for: profileID) != nil, activeProfileIDs.contains(profileID) else {
+        guard DevPilotProfile.profile(for: profileID) != nil, activeProfileIDs.contains(profileID) else {
             status = "비활성 프로필입니다"
             return
         }
@@ -81,12 +81,12 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         }
     }
 
-    var activeProfile: PASProfile {
-        PASProfile.profile(for: activeProfileID) ?? .work
+    var activeProfile: DevPilotProfile {
+        DevPilotProfile.profile(for: activeProfileID) ?? .work
     }
 
-    var availableProfiles: [PASProfile] {
-        PASProfile.all.filter { activeProfileIDs.contains($0.id) }
+    var availableProfiles: [DevPilotProfile] {
+        DevPilotProfile.all.filter { activeProfileIDs.contains($0.id) }
     }
 
     func isProfileEnabled(_ profileID: String) -> Bool {
@@ -94,8 +94,8 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
     }
 
     func setProfileEnabled(_ profileID: String, enabled: Bool) {
-        guard PASProfile.profile(for: profileID) != nil else { return }
-        if profileID == PASProfile.work.id && !enabled {
+        guard DevPilotProfile.profile(for: profileID) != nil else { return }
+        if profileID == DevPilotProfile.work.id && !enabled {
             status = "업무 프로필은 비활성화할 수 없습니다"
             return
         }
@@ -106,14 +106,14 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         } else {
             ids.remove(profileID)
         }
-        ids.insert(PASProfile.work.id)
+        ids.insert(DevPilotProfile.work.id)
         activeProfileIDs = ids
         Self.saveEnabledProfileIDs(ids)
 
         if !ids.contains(activeProfileID) {
-            switchProfile(to: PASProfile.work.id)
+            switchProfile(to: DevPilotProfile.work.id)
         } else {
-            status = "\(PASProfile.profile(for: profileID)?.title ?? profileID) 프로필을 \(enabled ? "활성화" : "비활성화")했습니다"
+            status = "\(DevPilotProfile.profile(for: profileID)?.title ?? profileID) 프로필을 \(enabled ? "활성화" : "비활성화")했습니다"
         }
     }
 
@@ -252,8 +252,8 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
     func handleDeepLink(_ url: URL) {
         shouldOpenDashboardOnLaunch = false
         isHandlingDeepLink = true
-        guard url.scheme == "pas" else {
-            status = "지원하지 않는 PAS 링크입니다"
+        guard url.scheme == "devpilot" else {
+            status = "지원하지 않는 DevPilot 링크입니다"
             isHandlingDeepLink = false
             return
         }
@@ -266,7 +266,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
             guard !issue.isEmpty, !repo.isEmpty else {
                 status = "브랜치 생성 링크에 필요한 값이 없습니다"
                 isHandlingDeepLink = false
-                openOutputWindow(title: "PAS 링크 오류", output: "브랜치 생성 링크에 issue 또는 repo 값이 없습니다.\n\n받은 링크: \(url.absoluteString)")
+                openOutputWindow(title: "DevPilot 링크 오류", output: "브랜치 생성 링크에 issue 또는 repo 값이 없습니다.\n\n받은 링크: \(url.absoluteString)")
                 return
             }
             Task {
@@ -282,7 +282,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
             guard !issue.isEmpty else {
                 status = "Jira repo 연결 링크에 issue 값이 없습니다"
                 isHandlingDeepLink = false
-                openOutputWindow(title: "PAS 링크 오류", output: "Jira repository 연결 링크에 issue 값이 없습니다.\n\n받은 링크: \(url.absoluteString)")
+                openOutputWindow(title: "DevPilot 링크 오류", output: "Jira repository 연결 링크에 issue 값이 없습니다.\n\n받은 링크: \(url.absoluteString)")
                 return
             }
             openIssueRepositoryLinkWindow(issue: issue, summary: summary)
@@ -291,9 +291,9 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
             return
         }
 
-        status = "지원하지 않는 PAS 링크입니다"
+        status = "지원하지 않는 DevPilot 링크입니다"
         isHandlingDeepLink = false
-        openOutputWindow(title: "PAS 링크 오류", output: "지원하지 않는 PAS 링크입니다.\n\n받은 링크: \(url.absoluteString)")
+        openOutputWindow(title: "DevPilot 링크 오류", output: "지원하지 않는 DevPilot 링크입니다.\n\n받은 링크: \(url.absoluteString)")
     }
 
     func copyLastOutput() {
@@ -342,7 +342,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "PAS 설정"
+        window.title = "DevPilot 설정"
         window.center()
         window.contentView = NSHostingView(rootView: SetupView(runner: self))
         window.isReleasedWhenClosed = false
@@ -373,7 +373,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
             backing: .buffered,
             defer: false
         )
-        window.title = "PAS 작업 콘솔"
+        window.title = "DevPilot 작업 콘솔"
         window.center()
         window.contentView = NSHostingView(rootView: WorkView(runner: self))
         window.isReleasedWhenClosed = false
@@ -472,16 +472,16 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         }
     }
 
-    func saveReportAgentRules(_ text: String) -> PASCommandResult {
+    func saveReportAgentRules(_ text: String) -> DevPilotCommandResult {
         do {
             try Self.prepareSupportFiles()
             try text.write(to: Self.reportAgentURL(), atomically: true, encoding: .utf8)
             status = "보고서 작성 규칙을 저장했습니다"
-            return PASCommandResult(succeeded: true, output: "보고서 작성 규칙을 저장했습니다.", summary: "저장 완료")
+            return DevPilotCommandResult(succeeded: true, output: "보고서 작성 규칙을 저장했습니다.", summary: "저장 완료")
         } catch {
             let message = "보고서 작성 규칙 저장 실패: \(error.localizedDescription)"
             status = message
-            return PASCommandResult(succeeded: false, output: message, summary: message)
+            return DevPilotCommandResult(succeeded: false, output: message, summary: message)
         }
     }
 
@@ -496,24 +496,24 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         }
     }
 
-    func saveCodexPromptRules(_ text: String) -> PASCommandResult {
+    func saveCodexPromptRules(_ text: String) -> DevPilotCommandResult {
         do {
             try Self.prepareSupportFiles()
             try text.write(to: Self.codexPromptRulesURL(), atomically: true, encoding: .utf8)
             status = "Codex 공통 규칙을 저장했습니다"
-            return PASCommandResult(succeeded: true, output: "Codex 공통 규칙을 저장했습니다.", summary: "저장 완료")
+            return DevPilotCommandResult(succeeded: true, output: "Codex 공통 규칙을 저장했습니다.", summary: "저장 완료")
         } catch {
             let message = "Codex 공통 규칙 저장 실패: \(error.localizedDescription)"
             status = message
-            return PASCommandResult(succeeded: false, output: message, summary: message)
+            return DevPilotCommandResult(succeeded: false, output: message, summary: message)
         }
     }
 
-    func loadSettings() -> PASSettings {
+    func loadSettings() -> DevPilotSettings {
         settingsStore().load()
     }
 
-    func saveSettings(_ settings: PASSettings) {
+    func saveSettings(_ settings: DevPilotSettings) {
         do {
             try Self.prepareSupportFiles()
             try settingsStore().save(settings)
@@ -522,15 +522,15 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
             let message = "설정 저장 실패: \(error.localizedDescription)"
             status = message
             lastOutput = message
-            openOutputWindow(title: "PAS 설정 오류", output: message)
+            openOutputWindow(title: "DevPilot 설정 오류", output: message)
         }
     }
 
-    private func settingsStore() -> PASSettingsStore {
-        PASSettingsStore(configURL: Self.configURL(), stateURL: Self.stateURL())
+    private func settingsStore() -> DevPilotSettingsStore {
+        DevPilotSettingsStore(configURL: Self.configURL(), stateURL: Self.stateURL())
     }
 
-    func loadSlackChannels(settings: PASSettings) async -> [SlackChannel] {
+    func loadSlackChannels(settings: DevPilotSettings) async -> [SlackChannel] {
         saveSettings(settings)
         status = "Slack 채널 목록을 불러오는 중..."
         let result = await Self.executeDetached(["slack", "channels", "--format", "tsv"])
@@ -543,7 +543,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         return Self.parseSlackChannels(result.output)
     }
 
-    func loadLocalRepositories(settings: PASSettings) async -> [LocalRepositoryOption] {
+    func loadLocalRepositories(settings: DevPilotSettings) async -> [LocalRepositoryOption] {
         saveSettings(settings)
         status = "관리 Git repository 목록을 불러오는 중..."
         let result = await Self.executeDetached(["repo", "list", "--format", "tsv"])
@@ -573,7 +573,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         return Self.parseRemoteRepositories(result.output)
     }
 
-    func checkGitHubAuthStatus() async -> PASCommandResult {
+    func checkGitHubAuthStatus() async -> DevPilotCommandResult {
         status = "GitHub CLI 로그인 상태를 확인하는 중..."
         let result = await Self.executeDetachedRaw(["gh", "auth", "status"])
         lastOutput = result.output
@@ -582,7 +582,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
             title: result.succeeded ? "GitHub CLI 로그인 상태" : "GitHub CLI 로그인 필요",
             output: result.output.isEmpty ? result.summary : result.output
         )
-        return PASCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
+        return DevPilotCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
     }
 
     func openGitHubLoginInTerminal() {
@@ -592,7 +592,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
             let script = """
             #!/bin/zsh
             clear
-            echo "PAS GitHub CLI 로그인"
+            echo "DevPilot GitHub CLI 로그인"
             echo ""
             if ! command -v gh >/dev/null 2>&1; then
               echo "GitHub CLI(gh)를 찾지 못했습니다."
@@ -623,14 +623,14 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         }
     }
 
-    func cloneRemoteRepository(_ repo: GitHubRemoteRepositoryOption, targetRoot: String) async -> PASCommandResult {
+    func cloneRemoteRepository(_ repo: GitHubRemoteRepositoryOption, targetRoot: String) async -> DevPilotCommandResult {
         let result = await Self.executeDetached(["repo", "clone", "--repo", repo.cloneSource, "--target-root", targetRoot])
         lastOutput = result.output
         status = result.succeeded ? "\(repo.nameWithOwner) 준비 완료" : "\(repo.nameWithOwner) clone 실패"
         if !result.succeeded {
             openOutputWindow(title: "GitHub repository 가져오기 오류", output: result.output.isEmpty ? result.summary : result.output)
         }
-        return PASCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
+        return DevPilotCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
     }
 
     func loadManagedRepositories() async -> [LocalRepositoryOption] {
@@ -682,9 +682,9 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         return Self.parseBranchOptions(result.output)
     }
 
-    func checkoutRepositoryBranch(path: String, branch: String) async -> PASCommandResult {
+    func checkoutRepositoryBranch(path: String, branch: String) async -> DevPilotCommandResult {
         guard !isRunning else {
-            return PASCommandResult(succeeded: false, output: "", summary: "이미 실행 중인 작업이 있습니다.")
+            return DevPilotCommandResult(succeeded: false, output: "", summary: "이미 실행 중인 작업이 있습니다.")
         }
         isRunning = true
         status = "\(branch) 체크아웃 중..."
@@ -695,7 +695,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         if !result.succeeded {
             openOutputWindow(title: "브랜치 체크아웃 오류", output: result.output.isEmpty ? result.summary : result.output)
         }
-        return PASCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
+        return DevPilotCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
     }
 
     func runDashboardCommand(
@@ -703,9 +703,9 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         runningStatus: String,
         successStatus: String,
         failureStatus: String
-    ) async -> PASCommandResult {
+    ) async -> DevPilotCommandResult {
         guard !isRunning else {
-            return PASCommandResult(succeeded: false, output: "", summary: "이미 실행 중인 작업이 있습니다.")
+            return DevPilotCommandResult(succeeded: false, output: "", summary: "이미 실행 중인 작업이 있습니다.")
         }
         isRunning = true
         status = runningStatus
@@ -713,13 +713,13 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         lastOutput = result.output
         status = result.succeeded ? successStatus : failureStatus
         isRunning = false
-        return PASCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
+        return DevPilotCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
     }
 
     @discardableResult
-    func createBranch(issue: String, repo: String, summary: String, showOutput: Bool = true) async -> PASCommandResult {
+    func createBranch(issue: String, repo: String, summary: String, showOutput: Bool = true) async -> DevPilotCommandResult {
         guard !isRunning else {
-            return PASCommandResult(succeeded: false, output: "", summary: "이미 실행 중인 작업이 있습니다.")
+            return DevPilotCommandResult(succeeded: false, output: "", summary: "이미 실행 중인 작업이 있습니다.")
         }
         isRunning = true
         status = "\(issue) 브랜치 생성 중..."
@@ -736,12 +736,12 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         if result.succeeded {
             openWorkWindow()
         }
-        return PASCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
+        return DevPilotCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
     }
 
-    func startIssueWork(issue: String, summary: String) async -> PASCommandResult {
+    func startIssueWork(issue: String, summary: String) async -> DevPilotCommandResult {
         guard !isRunning else {
-            return PASCommandResult(succeeded: false, output: "", summary: "이미 실행 중인 작업이 있습니다.")
+            return DevPilotCommandResult(succeeded: false, output: "", summary: "이미 실행 중인 작업이 있습니다.")
         }
         isRunning = true
         status = "\(issue) 작업 브랜치 준비 중..."
@@ -752,10 +752,10 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         if !result.succeeded && !Self.needsRepositorySelection(result.output.isEmpty ? result.summary : result.output) {
             openOutputWindow(title: "Jira 작업 시작 오류", output: result.output.isEmpty ? result.summary : result.output)
         }
-        return PASCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
+        return DevPilotCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
     }
 
-    func recommendIssueRepository(issue: String, summary: String) async -> PASCommandResult {
+    func recommendIssueRepository(issue: String, summary: String) async -> DevPilotCommandResult {
         let result = await runDashboardCommand(
             ["dev", "recommend-repo", issue, "--summary", summary],
             runningStatus: "\(issue) repository 추천 중...",
@@ -768,7 +768,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         return result
     }
 
-    func traceIssueWork(issue: String) async -> PASCommandResult {
+    func traceIssueWork(issue: String) async -> DevPilotCommandResult {
         let result = await runDashboardCommand(
             ["dev", "trace-issue", issue],
             runningStatus: "\(issue) 작업 연결 추적 중...",
@@ -789,7 +789,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         priority: String,
         dueDate: String,
         labels: String
-    ) async -> PASCommandResult {
+    ) async -> DevPilotCommandResult {
         var arguments = [
             "jira",
             "create",
@@ -824,9 +824,9 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         return result
     }
 
-    func linkIssueRepository(issue: String, repo: String, summary: String, showWorkWindow: Bool = true) async -> PASCommandResult {
+    func linkIssueRepository(issue: String, repo: String, summary: String, showWorkWindow: Bool = true) async -> DevPilotCommandResult {
         guard !isRunning else {
-            return PASCommandResult(succeeded: false, output: "", summary: "이미 실행 중인 작업이 있습니다.")
+            return DevPilotCommandResult(succeeded: false, output: "", summary: "이미 실행 중인 작업이 있습니다.")
         }
         isRunning = true
         status = "\(issue) repository 연결 중..."
@@ -841,7 +841,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         } else {
             openOutputWindow(title: "Jira repository 연결 오류", output: result.output.isEmpty ? result.summary : result.output)
         }
-        return PASCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
+        return DevPilotCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
     }
 
     func loadIssueRepositoryLinks() async -> String {
@@ -886,7 +886,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         return result.output.isEmpty ? result.summary : result.output
     }
 
-    func checkNewJiraIssues() async -> PASCommandResult {
+    func checkNewJiraIssues() async -> DevPilotCommandResult {
         status = "새 Jira 일감을 확인하는 중..."
         let result = await Self.executeDetached(["jira", "watch-new"])
         lastOutput = result.output
@@ -894,7 +894,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         if !result.succeeded {
             openOutputWindow(title: "새 Jira 일감 확인 오류", output: result.output.isEmpty ? result.summary : result.output)
         }
-        return PASCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
+        return DevPilotCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
     }
 
     func sendLocalNotification(title: String, body: String) {
@@ -912,7 +912,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         content.sound = .default
 
         let request = UNNotificationRequest(
-            identifier: "pas-\(UUID().uuidString)",
+            identifier: "devpilot-\(UUID().uuidString)",
             content: content,
             trigger: nil
         )
@@ -975,12 +975,12 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         )
     }
 
-    func refineReportWithCodex(draft: String, notes: String = "") async -> PASCommandResult {
+    func refineReportWithCodex(draft: String, notes: String = "") async -> DevPilotCommandResult {
         let codexURL = Self.codexExecutableURL()
         guard FileManager.default.isExecutableFile(atPath: codexURL.path) else {
             let message = "Codex CLI를 찾지 못했습니다: \(codexURL.path)"
             status = message
-            return PASCommandResult(succeeded: false, output: message, summary: message)
+            return DevPilotCommandResult(succeeded: false, output: message, summary: message)
         }
 
         let outputURL = Self.activeSupportDirectory().appendingPathComponent("codex-report-\(UUID().uuidString).md")
@@ -1010,7 +1010,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         if !result.succeeded {
             openOutputWindow(title: "Codex 보고서 다듬기 오류", output: result.output.isEmpty ? result.summary : result.output)
         }
-        return PASCommandResult(succeeded: result.succeeded && !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, output: output, summary: result.summary)
+        return DevPilotCommandResult(succeeded: result.succeeded && !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, output: output, summary: result.summary)
     }
 
     private func makeCodexReportPrompt(draft: String, notes: String = "") -> String {
@@ -1023,7 +1023,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
             context: [
                 CodexPromptSection("보고서 작성 규칙", rules.isEmpty ? "- 기본 형식: 오늘 한 일, 주요 변경점, 확인 필요, 내일 이어갈 일" : rules),
                 CodexPromptSection("수동 메모", noteSection),
-                CodexPromptSection("PAS 수집 초안", draftSection),
+                CodexPromptSection("DevPilot 수집 초안", draftSection),
             ],
             globalRules: loadCodexPromptRulesForPrompt(),
             rules: [
@@ -1035,16 +1035,16 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         )
     }
 
-    func refineMemoWithCodex(text: String, targetTitle: String) async -> PASCommandResult {
+    func refineMemoWithCodex(text: String, targetTitle: String) async -> DevPilotCommandResult {
         await askCodexAboutMemo(text: text, targetTitle: targetTitle, question: "메모를 짧고 실무적으로 다듬어줘. 사실을 새로 만들지 말고, 다듬은 메모 본문만 알려줘.")
     }
 
-    func askCodexAboutMemo(text: String, targetTitle: String, question: String) async -> PASCommandResult {
+    func askCodexAboutMemo(text: String, targetTitle: String, question: String) async -> DevPilotCommandResult {
         let codexURL = Self.codexExecutableURL()
         guard FileManager.default.isExecutableFile(atPath: codexURL.path) else {
             let message = "Codex CLI를 찾지 못했습니다: \(codexURL.path)"
             status = message
-            return PASCommandResult(succeeded: false, output: message, summary: message)
+            return DevPilotCommandResult(succeeded: false, output: message, summary: message)
         }
 
         let outputURL = Self.activeSupportDirectory().appendingPathComponent("codex-memo-\(UUID().uuidString).md")
@@ -1078,7 +1078,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         if !result.succeeded {
             openOutputWindow(title: "Codex 메모 응답 오류", output: result.output.isEmpty ? result.summary : result.output)
         }
-        return PASCommandResult(succeeded: result.succeeded && !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, output: output, summary: result.summary)
+        return DevPilotCommandResult(succeeded: result.succeeded && !output.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, output: output, summary: result.summary)
     }
 
     func sendEditedReport(_ text: String) async -> String {
@@ -1104,7 +1104,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         return result.output.isEmpty ? result.summary : result.output
     }
 
-    func submitReport(_ text: String, notes: String = "", sendSlack: Bool) async -> PASCommandResult {
+    func submitReport(_ text: String, notes: String = "", sendSlack: Bool) async -> DevPilotCommandResult {
         let reportURL = Self.activeSupportDirectory().appendingPathComponent("submitted-report-\(UUID().uuidString).md")
         let notesURL = Self.activeSupportDirectory().appendingPathComponent("submitted-report-notes-\(UUID().uuidString).txt")
         do {
@@ -1113,7 +1113,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         } catch {
             let message = "보고서 제출 임시 파일 저장 실패: \(error.localizedDescription)"
             status = message
-            return PASCommandResult(succeeded: false, output: message, summary: message)
+            return DevPilotCommandResult(succeeded: false, output: message, summary: message)
         }
 
         var arguments = ["repo", "submit-report", "--text-file", reportURL.path, "--notes-file", notesURL.path]
@@ -1131,7 +1131,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         if !result.succeeded {
             openOutputWindow(title: "보고서 제출 오류", output: result.output.isEmpty ? result.summary : result.output)
         }
-        return PASCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
+        return DevPilotCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
     }
 
     func loadSubmittedReports() async -> [SubmittedReportRecord] {
@@ -1148,14 +1148,14 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         return (try? JSONDecoder().decode([SubmittedReportRecord].self, from: data)) ?? []
     }
 
-    func saveWorkMemo(target: MemoTargetOption, text: String) async -> PASCommandResult {
+    func saveWorkMemo(target: MemoTargetOption, text: String) async -> DevPilotCommandResult {
         let memoURL = Self.activeSupportDirectory().appendingPathComponent("work-memo-\(UUID().uuidString).md")
         do {
             try text.write(to: memoURL, atomically: true, encoding: .utf8)
         } catch {
             let message = "작업 메모 임시 파일 저장 실패: \(error.localizedDescription)"
             status = message
-            return PASCommandResult(succeeded: false, output: message, summary: message)
+            return DevPilotCommandResult(succeeded: false, output: message, summary: message)
         }
         isRunning = true
         status = "작업 메모 저장 중..."
@@ -1178,7 +1178,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         if !result.succeeded {
             openOutputWindow(title: "작업 메모 저장 오류", output: result.output.isEmpty ? result.summary : result.output)
         }
-        return PASCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
+        return DevPilotCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
     }
 
     func loadWorkMemos() async -> [WorkMemoRecord] {
@@ -1226,7 +1226,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         return detail
     }
 
-    func saveOvertimeRecord(date: String, hours: String, kind: String, startTime: String, endTime: String, memo: String) async -> PASCommandResult {
+    func saveOvertimeRecord(date: String, hours: String, kind: String, startTime: String, endTime: String, memo: String) async -> DevPilotCommandResult {
         var arguments = ["overtime", "add", "--date", date, "--hours", hours, "--kind", kind, "--memo", memo]
         if !startTime.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !endTime.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             arguments.append(contentsOf: ["--start", startTime, "--end", endTime])
@@ -1243,7 +1243,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         return result
     }
 
-    func updateOvertimeRecord(id: String, date: String, hours: String, kind: String, startTime: String, endTime: String, memo: String) async -> PASCommandResult {
+    func updateOvertimeRecord(id: String, date: String, hours: String, kind: String, startTime: String, endTime: String, memo: String) async -> DevPilotCommandResult {
         var arguments = ["overtime", "update", "--id", id, "--date", date, "--hours", hours, "--kind", kind, "--memo", memo]
         if !startTime.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !endTime.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             arguments.append(contentsOf: ["--start", startTime, "--end", endTime])
@@ -1260,7 +1260,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         return result
     }
 
-    func deleteOvertimeRecord(id: String) async -> PASCommandResult {
+    func deleteOvertimeRecord(id: String) async -> DevPilotCommandResult {
         let result = await runDashboardCommand(
             ["overtime", "delete", "--id", id],
             runningStatus: "연장 근무 기록 삭제 중...",
@@ -1284,7 +1284,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         baseMonthlySalary: String,
         inclusiveOvertimePay: String,
         statutoryBasePay: String
-    ) async -> PASCommandResult {
+    ) async -> DevPilotCommandResult {
         let result = await runDashboardCommand(
             [
                 "overtime",
@@ -1343,21 +1343,21 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         return targets
     }
 
-    func openCodexWorkspaceForIssue(issue: String, summary: String, detail: String, repositories: [LocalRepositoryOption]) async -> PASCommandResult {
+    func openCodexWorkspaceForIssue(issue: String, summary: String, detail: String, repositories: [LocalRepositoryOption]) async -> DevPilotCommandResult {
         let codexURL = Self.codexExecutableURL()
         guard FileManager.default.isExecutableFile(atPath: codexURL.path) else {
             let message = "Codex CLI를 찾지 못했습니다: \(codexURL.path)"
             status = message
-            return PASCommandResult(succeeded: false, output: message, summary: message)
+            return DevPilotCommandResult(succeeded: false, output: message, summary: message)
         }
         let repoPaths = repositories.map { URL(fileURLWithPath: $0.path).standardizedFileURL }
         guard let workspaceRoot = Self.commonWorkspaceRoot(for: repoPaths) else {
             let message = "Codex로 열 작업 루트를 결정하지 못했습니다."
             status = message
-            return PASCommandResult(succeeded: false, output: message, summary: message)
+            return DevPilotCommandResult(succeeded: false, output: message, summary: message)
         }
 
-        let contextDirectory = workspaceRoot.appendingPathComponent(".pas-codex", isDirectory: true)
+        let contextDirectory = workspaceRoot.appendingPathComponent(".devpilot-codex", isDirectory: true)
         let contextURL = contextDirectory.appendingPathComponent("\(issue)-context.md")
         let repoList = repositories
             .map { "- \($0.name): \($0.path) | branch \($0.branch)" }
@@ -1395,7 +1395,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         } catch {
             let message = "Codex 컨텍스트 파일 생성 실패: \(error.localizedDescription)"
             status = message
-            return PASCommandResult(succeeded: false, output: message, summary: message)
+            return DevPilotCommandResult(succeeded: false, output: message, summary: message)
         }
 
         status = "Codex 작업 루트를 여는 중..."
@@ -1414,19 +1414,19 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         if !result.succeeded {
             openOutputWindow(title: "Codex 작업 루트 열기 오류", output: result.output.isEmpty ? result.summary : result.output)
         }
-        return PASCommandResult(succeeded: result.succeeded, output: output, summary: result.summary)
+        return DevPilotCommandResult(succeeded: result.succeeded, output: output, summary: result.summary)
     }
 
-    func openCodexForRepositoryTask(repo: LocalRepositoryOption, instruction: String, convention: String, taskKind: String) async -> PASCommandResult {
+    func openCodexForRepositoryTask(repo: LocalRepositoryOption, instruction: String, convention: String, taskKind: String) async -> DevPilotCommandResult {
         let codexURL = Self.codexExecutableURL()
         guard FileManager.default.isExecutableFile(atPath: codexURL.path) else {
             let message = "Codex CLI를 찾지 못했습니다: \(codexURL.path)"
             status = message
-            return PASCommandResult(succeeded: false, output: message, summary: message)
+            return DevPilotCommandResult(succeeded: false, output: message, summary: message)
         }
 
         let repoURL = URL(fileURLWithPath: repo.path, isDirectory: true).standardizedFileURL
-        let contextDirectory = repoURL.appendingPathComponent(".pas-codex", isDirectory: true)
+        let contextDirectory = repoURL.appendingPathComponent(".devpilot-codex", isDirectory: true)
         let contextURL = contextDirectory.appendingPathComponent("repo-task-\(Date().timeIntervalSince1970).md")
         let context = CodexPromptBuilder.build(
             kind: .repositoryTask,
@@ -1462,7 +1462,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         } catch {
             let message = "Codex repository 작업 컨텍스트 생성 실패: \(error.localizedDescription)"
             status = message
-            return PASCommandResult(succeeded: false, output: message, summary: message)
+            return DevPilotCommandResult(succeeded: false, output: message, summary: message)
         }
 
         status = "\(repo.name) Codex 작업을 여는 중..."
@@ -1481,7 +1481,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         if !result.succeeded {
             openOutputWindow(title: "Codex repository 작업 오류", output: result.output.isEmpty ? result.summary : result.output)
         }
-        return PASCommandResult(succeeded: result.succeeded, output: output, summary: result.summary)
+        return DevPilotCommandResult(succeeded: result.succeeded, output: output, summary: result.summary)
     }
 
     func loadCodexHealth() async -> CodexHealthStatus {
@@ -1644,7 +1644,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
     }
 
     private nonisolated static func execute(_ arguments: [String]) -> (succeeded: Bool, output: String, summary: String) {
-        let executable = pasExecutable()
+        let executable = devPilotExecutable()
         return executeRaw(executable.prefixArguments + [
             "--config",
             configURL().path
@@ -1850,7 +1850,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         environment["PATH"] = ([existingPath] + extraPaths)
             .filter { !$0.isEmpty }
             .joined(separator: ":")
-        environment["PAS_APP_DATA_DIR"] = activeSupportDirectory().path
+        environment["DEVPILOT_APP_DATA_DIR"] = activeSupportDirectory().path
         return environment
     }
 
@@ -1910,7 +1910,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
 
         copyExampleIfNeeded(resourcePath: "config.example.toml", to: configURL())
         copyExampleIfNeeded(resourcePath: "assignees.example.json", to: assigneesURL())
-        copyExampleIfNeeded(resourcePath: "report-agent.example.md", to: reportAgentURL())
+        copyExampleIfNeeded(resourcePath: "devpilot-report-agent.example.md", to: reportAgentURL())
         createReportAgentIfNeeded()
         createCodexPromptRulesIfNeeded()
         createStateIfNeeded()
@@ -1924,18 +1924,18 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         try? fileManager.copyItem(at: source, to: destination)
     }
 
-    private nonisolated static func pasExecutable() -> (url: URL, prefixArguments: [String]) {
-        if let explicit = ProcessInfo.processInfo.environment["PAS_BIN"], !explicit.isEmpty {
+    private nonisolated static func devPilotExecutable() -> (url: URL, prefixArguments: [String]) {
+        if let explicit = ProcessInfo.processInfo.environment["DEVPILOT_BIN"], !explicit.isEmpty {
             return (URL(fileURLWithPath: explicit), [])
         }
-        if let bundled = Bundle.main.url(forResource: "pas", withExtension: nil, subdirectory: "bin") {
+        if let bundled = Bundle.main.url(forResource: "devpilot", withExtension: nil, subdirectory: "bin") {
             return (bundled, [])
         }
-        let developmentPas = projectRootURL().appendingPathComponent(".venv/bin/pas")
-        if FileManager.default.isExecutableFile(atPath: developmentPas.path) {
-            return (developmentPas, [])
+        let developmentExecutable = projectRootURL().appendingPathComponent(".venv/bin/devpilot")
+        if FileManager.default.isExecutableFile(atPath: developmentExecutable.path) {
+            return (developmentExecutable, [])
         }
-        return (URL(fileURLWithPath: "/usr/bin/env"), ["pas"])
+        return (URL(fileURLWithPath: "/usr/bin/env"), ["devpilot"])
     }
 
     private nonisolated static func projectRootURL() -> URL {
@@ -1950,25 +1950,25 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
     private nonisolated static func supportDirectory() -> URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
-        return base.appendingPathComponent("PAS", isDirectory: true)
+        return base.appendingPathComponent("DevPilot", isDirectory: true)
     }
 
-    private nonisolated static let activeProfileDefaultsKey = "pas.activeProfile"
-    private nonisolated static let enabledProfilesDefaultsKey = "pas.enabledProfiles"
+    private nonisolated static let activeProfileDefaultsKey = "devpilot.activeProfile"
+    private nonisolated static let enabledProfilesDefaultsKey = "devpilot.enabledProfiles"
 
     private nonisolated static func currentProfileID() -> String {
-        let value = UserDefaults.standard.string(forKey: activeProfileDefaultsKey) ?? PASProfile.work.id
+        let value = UserDefaults.standard.string(forKey: activeProfileDefaultsKey) ?? DevPilotProfile.work.id
         let enabled = enabledProfileIDs()
-        guard let profile = PASProfile.profile(for: value), enabled.contains(profile.id) else {
-            return PASProfile.work.id
+        guard let profile = DevPilotProfile.profile(for: value), enabled.contains(profile.id) else {
+            return DevPilotProfile.work.id
         }
         return profile.id
     }
 
     private nonisolated static func enabledProfileIDs() -> Set<String> {
-        let values = UserDefaults.standard.stringArray(forKey: enabledProfilesDefaultsKey) ?? [PASProfile.work.id]
-        var ids = Set(values.filter { PASProfile.profile(for: $0) != nil })
-        ids.insert(PASProfile.work.id)
+        let values = UserDefaults.standard.stringArray(forKey: enabledProfilesDefaultsKey) ?? [DevPilotProfile.work.id]
+        var ids = Set(values.filter { DevPilotProfile.profile(for: $0) != nil })
+        ids.insert(DevPilotProfile.work.id)
         return ids
     }
 
@@ -1979,10 +1979,10 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
     private nonisolated static func activeSupportDirectory() -> URL {
         let root = supportDirectory()
         switch currentProfileID() {
-        case PASProfile.personal.id:
+        case DevPilotProfile.personal.id:
             return root
                 .appendingPathComponent("profiles", isDirectory: true)
-                .appendingPathComponent(PASProfile.personal.id, isDirectory: true)
+                .appendingPathComponent(DevPilotProfile.personal.id, isDirectory: true)
         default:
             return root
         }
@@ -2035,7 +2035,7 @@ final class PASRunner: NSObject, ObservableObject, NSWindowDelegate {
         let destination = reportAgentURL()
         guard !FileManager.default.fileExists(atPath: destination.path) else { return }
         let payload = """
-        # PAS Report Agent
+        # DevPilot Report Agent
 
         - Slack에 바로 보낼 수 있는 한국어 일일 보고서로 작성한다.
         - 오늘 한 일, 주요 변경점, 확인 필요, 내일 이어갈 일을 포함한다.

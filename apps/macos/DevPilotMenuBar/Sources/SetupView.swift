@@ -55,9 +55,9 @@ private struct SettingsSidebarButton: View {
 }
 
 struct SetupView: View {
-    @ObservedObject var runner: PASRunner
+    @ObservedObject var runner: DevPilotRunner
 
-    @State private var settings: PASSettings
+    @State private var settings: DevPilotSettings
     @State private var slackChannels: [SlackChannel] = []
     @State private var localRepositories: [LocalRepositoryOption] = []
     @State private var remoteRepositories: [GitHubRemoteRepositoryOption] = []
@@ -80,7 +80,7 @@ struct SetupView: View {
     @State private var isTestExpanded = false
     @State private var selectedSettingsSection = "basic"
 
-    init(runner: PASRunner) {
+    init(runner: DevPilotRunner) {
         self.runner = runner
         let loadedSettings = runner.loadSettings()
         _settings = State(initialValue: loadedSettings)
@@ -212,7 +212,7 @@ struct SetupView: View {
             isExpanded: $isProfileExpanded
         ) {
             VStack(alignment: .leading, spacing: 10) {
-                ForEach(PASProfile.all) { profile in
+                ForEach(DevPilotProfile.all) { profile in
                     HStack(alignment: .center, spacing: 10) {
                         Image(systemName: profile.systemImage)
                             .font(.system(size: 16, weight: .semibold))
@@ -238,8 +238,8 @@ struct SetupView: View {
                             )
                         )
                         .labelsHidden()
-                        .disabled(profile.id == PASProfile.work.id)
-                        .help(profile.id == PASProfile.work.id ? "업무 프로필은 항상 활성 상태입니다." : "프로필 활성화")
+                        .disabled(profile.id == DevPilotProfile.work.id)
+                        .help(profile.id == DevPilotProfile.work.id ? "업무 프로필은 항상 활성 상태입니다." : "프로필 활성화")
                     }
                     .padding(10)
                     .background(Color(nsColor: .textBackgroundColor).opacity(0.62))
@@ -422,7 +422,7 @@ struct SetupView: View {
                 GuideBox(
                     title: "GitHub CLI 연결 안내",
                     lines: [
-                        "GitHub CLI 로그인을 한 번 진행하면 PAS가 같은 로그인 상태로 repository 후보를 조회합니다.",
+                        "GitHub CLI 로그인을 한 번 진행하면 DevPilot가 같은 로그인 상태로 repository 후보를 조회합니다.",
                         "조직 repository가 보이지 않으면 GitHub 조직 SSO 승인이 필요할 수 있습니다.",
                         "선택한 repository는 지정한 clone 위치에 내려받고, 이미 있으면 fetch로 원격 상태만 갱신합니다."
                     ],

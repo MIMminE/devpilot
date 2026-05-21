@@ -43,7 +43,7 @@ struct CodexPromptSection {
 
 enum CodexPromptBuilder {
     static let defaultGlobalRules = """
-    # PAS Codex 공통 규칙
+    # DevPilot Codex 공통 규칙
 
     ## 기본 태도
 
@@ -89,9 +89,9 @@ enum CodexPromptBuilder {
             .joined(separator: "\n\n")
 
         return """
-        # PAS Codex Request: \(kind.title)
+        # DevPilot Codex Request: \(kind.title)
 
-        너는 PAS 앱 안에서 개발자의 작업을 도와주는 Codex 동료다.
+        너는 DevPilot 앱 안에서 개발자의 작업을 도와주는 Codex 동료다.
         아래 "사용자 요청"을 최우선으로 따르되, 공통 원칙과 앱이 수집한 컨텍스트를 함께 반영한다.
 
         ## 공통 원칙

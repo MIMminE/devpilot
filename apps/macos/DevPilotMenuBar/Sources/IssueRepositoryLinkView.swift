@@ -1,7 +1,7 @@
 ﻿import SwiftUI
 
 struct IssueRepositoryLinkView: View {
-    @ObservedObject var runner: PASRunner
+    @ObservedObject var runner: DevPilotRunner
     let issue: String
     let summary: String
 

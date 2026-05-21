@@ -3,16 +3,16 @@
 import PackageDescription
 
 let package = Package(
-    name: "PASMenuBar",
+    name: "DevPilotMenuBar",
     platforms: [
         .macOS(.v13)
     ],
     products: [
-        .executable(name: "PASMenuBar", targets: ["PASMenuBar"])
+        .executable(name: "DevPilotMenuBar", targets: ["DevPilotMenuBar"])
     ],
     targets: [
         .executableTarget(
-            name: "PASMenuBar",
+            name: "DevPilotMenuBar",
             path: "Sources"
         )
     ]

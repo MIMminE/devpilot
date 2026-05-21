@@ -3,19 +3,19 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct WorkView: View {
-    @ObservedObject var runner: PASRunner
+    @ObservedObject var runner: DevPilotRunner
     private static let jiraKeyRegex = try? NSRegularExpression(pattern: #"[A-Z][A-Z0-9]+-\d+"#)
 
-    @AppStorage("pas.work.appearance") private var appearance = "system"
-    @AppStorage("pas.work.commandCenterExpanded") private var isCommandCenterExpanded = true
-    @AppStorage("pas.work.repositoryOrder") private var repositoryOrderRaw = ""
-    @AppStorage("pas.work.sidebarCollapsed") private var isSidebarCollapsed = false
-    @AppStorage("pas.work.selectedSection") private var selectedSection = "dashboard"
-    @AppStorage("pas.work.privacyMaskEnabled") private var privacyMaskEnabled = false
-    @AppStorage("pas.briefing.yesterdayMemo") private var briefingYesterdayMemo = ""
-    @AppStorage("pas.briefing.focusProject") private var briefingFocusProject = ""
-    @AppStorage("pas.briefing.memoryLog") private var briefingMemoryLog = ""
-    @AppStorage("pas.overtime.settingsPasscode") private var overtimeSettingsPasscode = ""
+    @AppStorage("devpilot.work.appearance") private var appearance = "system"
+    @AppStorage("devpilot.work.commandCenterExpanded") private var isCommandCenterExpanded = true
+    @AppStorage("devpilot.work.repositoryOrder") private var repositoryOrderRaw = ""
+    @AppStorage("devpilot.work.sidebarCollapsed") private var isSidebarCollapsed = false
+    @AppStorage("devpilot.work.selectedSection") private var selectedSection = "dashboard"
+    @AppStorage("devpilot.work.privacyMaskEnabled") private var privacyMaskEnabled = false
+    @AppStorage("devpilot.briefing.yesterdayMemo") private var briefingYesterdayMemo = ""
+    @AppStorage("devpilot.briefing.focusProject") private var briefingFocusProject = ""
+    @AppStorage("devpilot.briefing.memoryLog") private var briefingMemoryLog = ""
+    @AppStorage("devpilot.overtime.settingsPasscode") private var overtimeSettingsPasscode = ""
 
     @State private var repositories: [LocalRepositoryOption] = []
     @State private var isLoading = false
@@ -2584,7 +2584,7 @@ struct WorkView: View {
     }
 
     private func needsRepositorySelection(_ message: String) -> Bool {
-        PASRunner.needsRepositorySelection(message)
+        DevPilotRunner.needsRepositorySelection(message)
     }
 
     private func issueWorkState(for item: JiraListItem) -> IssueWorkState {
@@ -3161,7 +3161,7 @@ struct WorkView: View {
         let startTime = overtimeUsesTimeRange ? formatClock(hour: overtimeStartHour, minute: overtimeStartMinute) : ""
         let endTime = overtimeUsesTimeRange ? formatClock(hour: overtimeEndHour, minute: overtimeEndMinute) : ""
         let recordDate = formatDate(overtimeSelectedDate)
-        let result: PASCommandResult
+        let result: DevPilotCommandResult
         if editingOvertimeRecordID.isEmpty {
             result = await runner.saveOvertimeRecord(
                 date: recordDate,

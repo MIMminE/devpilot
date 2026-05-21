@@ -3,8 +3,8 @@ import Combine
 import SwiftUI
 
 @main
-struct PASMenuBarApp: App {
-    @NSApplicationDelegateAdaptor(PASAppDelegate.self) private var appDelegate
+struct DevPilotMenuBarApp: App {
+    @NSApplicationDelegateAdaptor(DevPilotAppDelegate.self) private var appDelegate
 
     var body: some Scene {
         Settings {
@@ -14,8 +14,8 @@ struct PASMenuBarApp: App {
 }
 
 @MainActor
-final class PASAppDelegate: NSObject, NSApplicationDelegate {
-    private let runner = PASRunner()
+final class DevPilotAppDelegate: NSObject, NSApplicationDelegate {
+    private let runner = DevPilotRunner()
     private var statusItem: NSStatusItem?
     private var cancellables: Set<AnyCancellable> = []
     private var pendingSingleClick: DispatchWorkItem?
@@ -54,7 +54,7 @@ final class PASAppDelegate: NSObject, NSApplicationDelegate {
 
         guard let button = item.button else { return }
         button.image = statusImage()
-        button.toolTip = "PAS"
+        button.toolTip = "DevPilot"
         button.target = self
         button.action = #selector(statusItemClicked(_:))
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -79,12 +79,12 @@ final class PASAppDelegate: NSObject, NSApplicationDelegate {
     private func refreshStatusItem() {
         guard let button = statusItem?.button else { return }
         button.image = statusImage()
-        button.toolTip = "PAS - \(runner.status)"
+        button.toolTip = "DevPilot - \(runner.status)"
     }
 
     private func statusImage() -> NSImage? {
         let name = runner.isRunning ? "bolt.circle.fill" : "bolt.circle"
-        let image = NSImage(systemSymbolName: name, accessibilityDescription: "PAS")
+        let image = NSImage(systemSymbolName: name, accessibilityDescription: "DevPilot")
         image?.isTemplate = true
         return image
     }

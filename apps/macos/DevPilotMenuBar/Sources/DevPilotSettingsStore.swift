@@ -1,11 +1,11 @@
 import Foundation
 
-struct PASSettingsStore {
+struct DevPilotSettingsStore {
     let configURL: URL
     let stateURL: URL
 
-    func load() -> PASSettings {
-        PASSettings(
+    func load() -> DevPilotSettings {
+        DevPilotSettings(
             slackMode: "oauth",
             slackBotToken: readConfigValue(section: "slack", key: "bot_token"),
             slackDefaultChannelID: readConfigValue(section: "slack.channels", key: "default"),
@@ -45,7 +45,7 @@ struct PASSettingsStore {
         )
     }
 
-    func save(_ settings: PASSettings) throws {
+    func save(_ settings: DevPilotSettings) throws {
         try writeConfig(settings)
         try markSetupCompleted()
     }
@@ -147,7 +147,7 @@ struct PASSettingsStore {
         return projects
     }
 
-    private func writeConfig(_ settings: PASSettings) throws {
+    private func writeConfig(_ settings: DevPilotSettings) throws {
         guard var text = try? String(contentsOf: configURL, encoding: .utf8) else { return }
         text = replaceConfigValue(text, section: "general", key: "git_author", value: settings.gitAuthor)
         text = replaceConfigValue(text, section: "general", key: "work_end_time", value: settings.workEndTime)

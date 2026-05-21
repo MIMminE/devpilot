@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct RepoCodexTaskView: View {
-    @ObservedObject var runner: PASRunner
+    @ObservedObject var runner: DevPilotRunner
     let repo: LocalRepositoryOption
 
     @State private var selectedTask = RepoCodexTaskKind.commitSplit

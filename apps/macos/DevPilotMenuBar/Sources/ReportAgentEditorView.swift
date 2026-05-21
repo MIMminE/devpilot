@@ -1,7 +1,7 @@
 ﻿import SwiftUI
 
 struct ReportAgentEditorView: View {
-    @ObservedObject var runner: PASRunner
+    @ObservedObject var runner: DevPilotRunner
 
     @State private var selectedScope = PromptRuleScope.codex
     @State private var reportRules = ""
@@ -109,7 +109,7 @@ struct ReportAgentEditorView: View {
                 }
 
                 Button("저장") {
-                    let result: PASCommandResult
+                    let result: DevPilotCommandResult
                     switch selectedScope {
                     case .codex:
                         result = runner.saveCodexPromptRules(codexRules)
@@ -166,7 +166,7 @@ struct ReportAgentEditorView: View {
     }
 
     private static let defaultReportRules = """
-    # PAS Report Agent
+    # DevPilot Report Agent
 
     ## 목표
 

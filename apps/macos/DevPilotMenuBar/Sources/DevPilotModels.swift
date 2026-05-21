@@ -1,6 +1,6 @@
 ﻿import SwiftUI
 
-struct PASCommandResult: Sendable {
+struct DevPilotCommandResult: Sendable {
     let succeeded: Bool
     let output: String
     let summary: String
@@ -11,19 +11,19 @@ struct PASCommandResult: Sendable {
     }
 }
 
-enum PASProfileKind: String, Sendable {
+enum DevPilotProfileKind: String, Sendable {
     case work
     case personal
 }
 
-struct PASProfile: Identifiable, Hashable, Sendable {
+struct DevPilotProfile: Identifiable, Hashable, Sendable {
     let id: String
     let title: String
     let subtitle: String
     let systemImage: String
-    let kind: PASProfileKind
+    let kind: DevPilotProfileKind
 
-    static let work = PASProfile(
+    static let work = DevPilotProfile(
         id: "work",
         title: "업무",
         subtitle: "조직 Jira, Slack, GitHub 흐름",
@@ -31,7 +31,7 @@ struct PASProfile: Identifiable, Hashable, Sendable {
         kind: .work
     )
 
-    static let personal = PASProfile(
+    static let personal = DevPilotProfile(
         id: "personal",
         title: "개인",
         subtitle: "개인 GitHub 프로젝트 중심",
@@ -39,14 +39,14 @@ struct PASProfile: Identifiable, Hashable, Sendable {
         kind: .personal
     )
 
-    static let all: [PASProfile] = [.work, .personal]
+    static let all: [DevPilotProfile] = [.work, .personal]
 
-    static func profile(for id: String) -> PASProfile? {
+    static func profile(for id: String) -> DevPilotProfile? {
         all.first { $0.id == id }
     }
 }
 
-struct PASSettings {
+struct DevPilotSettings {
     var slackMode: String
     var slackBotToken: String
     var slackDefaultChannelID: String
