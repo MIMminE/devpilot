@@ -25,15 +25,15 @@ jobs:
       - name: Install Python build tools
         run: python -m pip install --upgrade pip pyinstaller -e .
 
-      - name: Build PAS core executable
-        run: pyinstaller --clean --onefile --paths src --collect-data certifi --name pas src/pas_automation/cli.py
+      - name: Build DevPilot core executable
+        run: pyinstaller --clean --onefile --paths src --collect-data certifi --name devpilot src/devpilot/cli.py
 
       - name: Build SwiftUI menu bar executable
         shell: bash
         run: |
           set +e
           set -o pipefail
-          swift build -c release --package-path apps/macos/PASMenuBar 2>&1 | tee swift-build.log
+          swift build -c release --package-path apps/macos/DevPilotMenuBar 2>&1 | tee swift-build.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
             python3 -c 'from pathlib import Path; lines = Path("swift-build.log").read_text(errors="replace").splitlines(); message = "\n".join(lines[-80:]); escaped = message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A"); print(f"::error title=Swift build failed::{escaped}")'
@@ -44,36 +44,36 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          APP="PAS.app"
+          APP="DevPilot.app"
           CONTENTS="$APP/Contents"
           MACOS="$CONTENTS/MacOS"
           RESOURCES="$CONTENTS/Resources"
 
           mkdir -p "$MACOS" "$RESOURCES/bin"
-          cp apps/macos/PASMenuBar/Info.plist "$CONTENTS/Info.plist"
+          cp apps/macos/DevPilotMenuBar/Info.plist "$CONTENTS/Info.plist"
           VERSION="${GITHUB_REF_NAME#v}"
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$CONTENTS/Info.plist"
           /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $GITHUB_RUN_NUMBER" "$CONTENTS/Info.plist"
-          cp apps/macos/PASMenuBar/.build/release/PASMenuBar "$MACOS/PASMenuBar"
-          cp dist/pas "$RESOURCES/bin/pas"
+          cp apps/macos/DevPilotMenuBar/.build/release/DevPilotMenuBar "$MACOS/DevPilotMenuBar"
+          cp dist/devpilot "$RESOURCES/bin/devpilot"
           cp examples/config.example.toml "$RESOURCES/config.example.toml"
           cp examples/assignees.example.json "$RESOURCES/assignees.example.json"
-          cp examples/report-agent.example.md "$RESOURCES/report-agent.example.md"
+          cp examples/devpilot-report-agent.example.md "$RESOURCES/devpilot-report-agent.example.md"
           python3 scripts/generate_macos_icon.py "$RESOURCES/AppIcon.iconset"
           iconutil -c icns "$RESOURCES/AppIcon.iconset" -o "$RESOURCES/AppIcon.icns"
           rm -rf "$RESOURCES/AppIcon.iconset"
-          chmod +x "$MACOS/PASMenuBar" "$RESOURCES/bin/pas"
+          chmod +x "$MACOS/DevPilotMenuBar" "$RESOURCES/bin/devpilot"
           codesign --force --deep --sign - "$APP"
           codesign --verify --deep --strict "$APP"
 
       - name: Archive app bundle
-        run: ditto -c -k --keepParent PAS.app pas-macos-menubar-arm64.zip
+        run: ditto -c -k --keepParent DevPilot.app devpilot-macos-menubar-arm64.zip
 
       - name: Upload app artifact
         uses: actions/upload-artifact@v4
         with:
-          name: pas-macos-menubar-arm64.zip
-          path: pas-macos-menubar-arm64.zip
+          name: devpilot-macos-menubar-arm64.zip
+          path: devpilot-macos-menubar-arm64.zip
           if-no-files-found: error
 
   publish:
@@ -97,18 +97,18 @@ jobs:
           TAG_NAME: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          files=$(find artifacts -name "pas-macos-menubar-arm64.zip" -type f | sort)
+          files=$(find artifacts -name "devpilot-macos-menubar-arm64.zip" -type f | sort)
           notes_file=".github/release-notes/${TAG_NAME}.md"
           if [ ! -f "$notes_file" ]; then
             notes_file="$(mktemp)"
             cat > "$notes_file" <<EOF
-          ## PAS ${TAG_NAME}
+          ## DevPilot ${TAG_NAME}
 
           macOS 메뉴바 앱 릴리즈입니다.
 
           ## 포함 파일
 
-          - pas-macos-menubar-arm64.zip
+          - devpilot-macos-menubar-arm64.zip
 
           ## 안내
 
