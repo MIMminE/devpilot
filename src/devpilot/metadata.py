@@ -1,0 +1,6 @@
+APP_NAME = "DevPilot"
+APP_DATA_ENV = "DEVPILOT_APP_DATA_DIR"
+CLI_COMMAND = "devpilot"
+CLI_MODULE = "devpilot.cli"
+LAUNCHD_LABEL_PREFIX = "com.devpilot"
+REPORT_AGENT_TEMPLATE = "devpilot-report-agent.example.md"

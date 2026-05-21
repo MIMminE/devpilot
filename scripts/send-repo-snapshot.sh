@@ -2,4 +2,4 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "$SCRIPT_DIR/run-pas.sh" repo snapshot --name morning
+exec "$SCRIPT_DIR/run-devpilot.sh" repo snapshot --name morning

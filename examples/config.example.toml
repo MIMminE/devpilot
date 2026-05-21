@@ -1,4 +1,4 @@
-# PAS 설정 예시
+# DevPilot 설정 예시
 # 실제 토큰은 로컬 config.toml에만 저장하고 git에 커밋하지 않습니다.
 
 [general]
@@ -8,8 +8,8 @@ timezone = "Asia/Seoul"
 git_author = "your-git-name-or-email"
 # 퇴근 체크와 Git 보고서의 기준 시간입니다.
 work_end_time = "18:00"
-# 스냅샷과 실행 상태를 저장할 폴더입니다. ".pas"는 config.toml 위치를 의미합니다.
-data_dir = ".pas"
+# 스냅샷과 실행 상태를 저장할 폴더입니다. ".devpilot"는 config.toml 위치를 의미합니다.
+data_dir = ".devpilot"
 
 [developer]
 # 작업 대시보드에서 repository를 열 기본 IDE 앱 이름입니다. 예: Cursor, Visual Studio Code, IntelliJ IDEA

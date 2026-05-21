@@ -9,12 +9,12 @@ check:
 
 [unix]
 smoke:
-    PAS_APP_DATA_DIR=.pas-smoke {{py}} -m pas_automation.cli --template-dir examples --config examples/config.example.toml slack test --dry-run
-    PAS_APP_DATA_DIR=.pas-smoke {{py}} -m pas_automation.cli --template-dir examples --config examples/config.example.toml jira today --dry-run
+    PYTHONPATH=src DEVPILOT_APP_DATA_DIR=.devpilot-smoke {{py}} -m devpilot.cli --template-dir examples --config examples/config.example.toml slack test --dry-run
+    PYTHONPATH=src DEVPILOT_APP_DATA_DIR=.devpilot-smoke {{py}} -m devpilot.cli --template-dir examples --config examples/config.example.toml jira today --dry-run
 
 clean:
     find . -type d -name __pycache__ -prune -exec rm -rf {} +
-    rm -rf .pycache build dist .pas-smoke *.spec
+    rm -rf .pycache build dist .devpilot-smoke *.spec
 
 status:
     git status --short --ignored
@@ -28,8 +28,8 @@ install-dev:
     .venv/bin/python -m pip install pyinstaller
 
 package-local:
-    {{py}} -m PyInstaller --clean --onefile --paths src --name pas src/pas_automation/cli.py
+    {{py}} -m PyInstaller --clean --onefile --paths src --name devpilot src/devpilot/cli.py
 
 [unix]
 macos-app-build:
-    swift build -c release --package-path apps/macos/PASMenuBar
+    swift build -c release --package-path apps/macos/DevPilotMenuBar

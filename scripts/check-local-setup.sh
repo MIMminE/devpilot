@@ -41,6 +41,6 @@ if [[ "$missing" -ne 0 ]]; then
 fi
 
 echo "Setup check passed."
-echo "Run CLI: scripts/run-pas.sh --help"
+echo "Run CLI: scripts/run-devpilot.sh --help"
 echo "Try Slack test: scripts/test-slack-now.sh"
 echo "Send Jira briefing now: scripts/test-jira-slack-now.sh"
