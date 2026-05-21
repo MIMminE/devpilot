@@ -1,0 +1,39 @@
+{
+  "id": "devpilot",
+  "title": "DevPilot",
+  "subtitle": "Jira, Git 저장소, Codex, 보고서를 연결하는 macOS 개인 업무 자동화 앱",
+  "category": "실무 도메인형",
+  "status": "Portfolio Ready",
+  "summary": "개발자의 하루 업무 흐름을 Jira 일감, 로컬 Git 저장소, Codex 작업 요청, 보고서, 기록으로 연결한 SwiftUI macOS 앱과 Python CLI 기반 자동화 프로젝트입니다.",
+  "stacks": [
+    "SwiftUI",
+    "macOS",
+    "Python",
+    "Jira API",
+    "GitHub CLI",
+    "Slack API",
+    "Codex CLI",
+    "GitHub Actions"
+  ],
+  "repoUrl": "https://github.com/MIMminE/devpilot",
+  "article": "blog/article.md",
+  "coverImage": "blog/images/01-dashboard.png",
+  "coverAlt": "DevPilot 대시보드",
+  "links": [
+    {
+      "label": "README",
+      "url": "README.md",
+      "type": "docs"
+    },
+    {
+      "label": "사용 설명서",
+      "url": "docs/USER_MANUAL.md",
+      "type": "manual"
+    },
+    {
+      "label": "제품 기획안",
+      "url": "docs/PRODUCT_PLAN.md",
+      "type": "docs"
+    }
+  ]
+}
