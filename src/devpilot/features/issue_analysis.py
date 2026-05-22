@@ -7,9 +7,10 @@ from devpilot.app_state import app_data_dir
 from devpilot.config import AppConfig
 from devpilot.features.issue_workflow import record_analysis_request
 from devpilot.features.jira_issues import issue_detail
+from devpilot.integrations.codex_app_server import create_codex_thread
 
 
-def draft_issue_analysis(config: AppConfig, issue_key: str, *, output_format: str = "text") -> str:
+def draft_issue_analysis(config: AppConfig, issue_key: str, *, output_format: str = "text", codex_thread: bool = False) -> str:
     key = issue_key.strip().upper()
     if not key:
         raise RuntimeError("Jira 이슈 키가 필요합니다.")
@@ -18,29 +19,65 @@ def draft_issue_analysis(config: AppConfig, issue_key: str, *, output_format: st
     prompt = _build_codex_analysis_prompt(detail)
     prompt_path = _write_analysis_prompt(key, prompt)
     summary = str(detail.get("summary") or "")
-    record_analysis_request(config, key, prompt_path=str(prompt_path), summary=summary)
+    thread = None
+    response_path = None
+    if codex_thread:
+        thread_name = _thread_name(key, summary)
+        workspace = _issue_workspace(key)
+        _write_workspace_context(workspace, key, prompt)
+        thread = create_codex_thread(workspace_path=workspace, thread_name=thread_name, prompt=prompt)
+        response_path = _write_analysis_response(key, thread.response)
+
+    record_analysis_request(
+        config,
+        key,
+        prompt_path=str(prompt_path),
+        summary=summary,
+        thread_id=thread.thread_id if thread else "",
+        thread_name=thread.thread_name if thread else "",
+        thread_path=thread.thread_path if thread else "",
+        response_path=str(response_path) if response_path else "",
+    )
 
     if output_format == "json":
-        return json.dumps(
-            {
-                "issue_key": key,
-                "summary": summary,
-                "prompt_path": str(prompt_path),
-                "prompt": prompt,
-            },
-            ensure_ascii=False,
-            indent=2,
-        )
+        payload = {
+            "issue_key": key,
+            "summary": summary,
+            "prompt_path": str(prompt_path),
+            "prompt": prompt,
+        }
+        if thread:
+            payload.update(
+                {
+                    "codex_thread_id": thread.thread_id,
+                    "codex_thread_name": thread.thread_name,
+                    "codex_thread_path": thread.thread_path,
+                    "codex_workspace": thread.cwd,
+                    "response_path": str(response_path),
+                    "response": thread.response,
+                }
+            )
+        return json.dumps(payload, ensure_ascii=False, indent=2)
 
-    return "\n".join(
-        [
-            f"{key} 1차 분석 요청서를 준비했습니다.",
-            f"- 요약: {summary or '-'}",
-            f"- Codex 프롬프트: {prompt_path}",
-            "",
-            prompt,
-        ]
-    ).strip()
+    lines = [
+        f"{key} 1차 분석 요청서를 준비했습니다.",
+        f"- 요약: {summary or '-'}",
+        f"- Codex 프롬프트: {prompt_path}",
+    ]
+    if thread:
+        lines.extend(
+            [
+                f"- Codex 스레드: {thread.thread_name}",
+                f"- thread id: {thread.thread_id}",
+                f"- workspace: {thread.cwd}",
+                f"- 분석 결과: {response_path}",
+                "",
+                thread.response or "-",
+            ]
+        )
+    else:
+        lines.extend(["", prompt])
+    return "\n".join(lines).strip()
 
 
 def _write_analysis_prompt(issue_key: str, prompt: str) -> Path:
@@ -49,6 +86,30 @@ def _write_analysis_prompt(issue_key: str, prompt: str) -> Path:
     path = directory / f"{issue_key.lower()}-analysis-prompt.md"
     path.write_text(prompt.rstrip() + "\n", encoding="utf-8")
     return path
+
+
+def _write_analysis_response(issue_key: str, response: str) -> Path:
+    directory = app_data_dir() / "issue-analysis"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{issue_key.lower()}-analysis-result.md"
+    path.write_text(response.rstrip() + "\n", encoding="utf-8")
+    return path
+
+
+def _issue_workspace(issue_key: str) -> Path:
+    return app_data_dir() / "codex-workspaces" / issue_key
+
+
+def _write_workspace_context(workspace: Path, issue_key: str, prompt: str) -> None:
+    workspace.mkdir(parents=True, exist_ok=True)
+    (workspace / f"{issue_key}-analysis.md").write_text(prompt.rstrip() + "\n", encoding="utf-8")
+
+
+def _thread_name(issue_key: str, summary: str) -> str:
+    suffix = summary.strip()
+    if len(suffix) > 50:
+        suffix = suffix[:47].rstrip() + "..."
+    return f"[{issue_key}] 1차 분석" + (f" - {suffix}" if suffix else "")
 
 
 def _build_codex_analysis_prompt(detail: dict) -> str:

@@ -23,6 +23,7 @@ def check_new_issues(
     include_existing: bool = False,
     send_slack: bool = False,
     analyze: bool = False,
+    codex_thread: bool = False,
 ) -> str:
     if not config.features.jira:
         return "Jira 기능이 꺼져 있습니다."
@@ -57,7 +58,7 @@ def check_new_issues(
 
     output = _format_issues(config, new_issues)
     if analyze:
-        output = "\n".join([output, "", _analyze_new_issues(config, new_issues)]).strip()
+        output = "\n".join([output, "", _analyze_new_issues(config, new_issues, codex_thread=codex_thread)]).strip()
     if send_slack and config.slack.destination_configured("alerts"):
         SlackClient(config.slack, destination="alerts").send(output, blocks=[section_block(output)])
     return output
@@ -133,17 +134,19 @@ def _format_issues(config: AppConfig, issues: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _analyze_new_issues(config: AppConfig, issues: list[dict]) -> str:
+def _analyze_new_issues(config: AppConfig, issues: list[dict], *, codex_thread: bool = False) -> str:
     lines = ["Codex 1차 분석 요청"]
     for issue in issues:
         key = str(issue.get("key") or "").strip()
         if not key:
             continue
         try:
-            payload = draft_issue_analysis(config, key, output_format="json")
+            payload = draft_issue_analysis(config, key, output_format="json", codex_thread=codex_thread)
             detail = json.loads(payload)
         except Exception as exc:
             lines.append(f"- {key}: 분석 요청 실패 - {exc}")
             continue
         lines.append(f"- {key}: {detail.get('prompt_path')}")
+        if detail.get("codex_thread_id"):
+            lines.append(f"  Codex 스레드: {detail.get('codex_thread_name')} ({detail.get('codex_thread_id')})")
     return "\n".join(lines)

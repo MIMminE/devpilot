@@ -47,7 +47,9 @@ blocked
 
 ```bash
 devpilot issue analyze LMS-123
+devpilot issue analyze LMS-123 --codex-thread
 devpilot jira watch-new --analyze
+devpilot jira watch-new --analyze --codex-thread
 devpilot issue start LMS-123 --summary "입고 수량 검증 오류 수정"
 devpilot dev start-issue LMS-123 --repo ~/work/service --summary "입고 수량 검증 오류 수정" --prefix fix
 devpilot dev commit-message --repo ~/work/service --issue-key LMS-123 --type fix

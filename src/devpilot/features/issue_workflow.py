@@ -165,7 +165,17 @@ def record_test_result(
     return workflow
 
 
-def record_analysis_request(config: AppConfig, issue_key: str, *, prompt_path: str, summary: str = "") -> dict:
+def record_analysis_request(
+    config: AppConfig,
+    issue_key: str,
+    *,
+    prompt_path: str,
+    summary: str = "",
+    thread_id: str = "",
+    thread_name: str = "",
+    thread_path: str = "",
+    response_path: str = "",
+) -> dict:
     key = _normalize_issue_key(issue_key)
     now = _now(config)
     state = read_state()
@@ -173,13 +183,24 @@ def record_analysis_request(config: AppConfig, issue_key: str, *, prompt_path: s
     workflow = _ensure_workflow(workflows, key, summary=summary, now=now)
     workflow["summary"] = summary.strip() or workflow.get("summary", "")
     workflow["status"] = _advance_status(str(workflow.get("status") or "assigned"), "assigned")
-    workflow["analysis"] = {
+    analysis = {
         "prompt_path": str(Path(prompt_path).expanduser()),
         "requested_at": now,
     }
+    if thread_id.strip():
+        analysis["thread_id"] = thread_id.strip()
+    if thread_name.strip():
+        analysis["thread_name"] = thread_name.strip()
+    if thread_path.strip():
+        analysis["thread_path"] = thread_path.strip()
+    if response_path.strip():
+        analysis["response_path"] = str(Path(response_path).expanduser())
+        analysis["completed_at"] = now
+    workflow["analysis"] = analysis
     workflow["updated_at"] = now
     _append_unique(workflow, "next_actions", "Codex 1차 분석 결과를 확인하고 작업 범위를 확정")
-    _append_event(workflow, "analysis_requested", "Codex 1차 분석 요청서를 준비했습니다.", now)
+    event_message = "Codex 1차 분석 스레드를 생성했습니다." if thread_id.strip() else "Codex 1차 분석 요청서를 준비했습니다."
+    _append_event(workflow, "analysis_requested", event_message, now)
     state["issue_workflows"] = workflows
     write_state(state)
     return workflow
@@ -290,6 +311,10 @@ def _format_workflow_detail(config: AppConfig, key: str, workflow: dict) -> str:
     if analysis:
         lines.append(f"- 요청: {analysis.get('requested_at') or '-'}")
         lines.append(f"- Codex 프롬프트: {analysis.get('prompt_path') or '-'}")
+        if analysis.get("thread_id"):
+            lines.append(f"- Codex 스레드: {analysis.get('thread_name') or '-'} ({analysis.get('thread_id')})")
+        if analysis.get("response_path"):
+            lines.append(f"- 분석 결과: {analysis.get('response_path')}")
     else:
         lines.append("- 기록 없음")
     lines.extend(["", "[테스트]"])
