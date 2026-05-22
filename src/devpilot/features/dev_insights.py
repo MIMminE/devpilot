@@ -7,8 +7,9 @@ import re
 import subprocess
 
 from devpilot.config import AppConfig
-from devpilot.features.dev_assistant import create_branch
+from devpilot.features.dev_assistant import branch_name, create_branch
 from devpilot.features.issue_repositories import issue_repository_link_groups, link_issue_repository
+from devpilot.features.issue_workflow import record_branch_ready, start_workflow
 from devpilot.integrations.git_repos import (
     ahead_behind,
     configured_repositories,
@@ -264,7 +265,9 @@ def start_issue_work(
     summary = summary or _safe_issue_summary(config, issue_key)
     repo = _resolve_issue_repo(config, issue_key, repo_path=repo_path, summary=summary)
     link_issue_repository(config, issue_key, str(repo), summary=summary)
+    start_workflow(config, issue_key, summary=summary, repo_path=str(repo))
     branch_result = create_branch(config, str(repo), issue_key, summary, prefix=prefix, base_branch=base_branch)
+    record_branch_ready(config, issue_key, repo_path=str(repo), branch=branch_name(issue_key, summary, prefix=prefix), summary=summary)
     return "\n".join(
         [
             f"{issue_key} 작업 시작 준비 완료",

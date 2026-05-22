@@ -32,6 +32,17 @@ from devpilot.features.issue_repositories import (
     link_issue_repository,
     unlink_issue_repository,
 )
+from devpilot.features.issue_workflow import (
+    evening_workflow_briefing,
+    format_workflow,
+    format_workflow_list,
+    morning_workflow_briefing,
+    record_branch_ready,
+    record_test_result,
+    record_work_report,
+    start_workflow,
+    update_workflow_status,
+)
 from devpilot.features.jira_daily import assign_issue, format_today_items
 from devpilot.features.jira_flow import team_flow
 from devpilot.features.jira_issues import create_issue, issue_detail
@@ -66,6 +77,39 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--template-dir", help="예제 설정 파일이 있는 템플릿 폴더. 기본값은 ./examples 또는 현재 폴더")
 
     subparsers = parser.add_subparsers(dest="area", required=True)
+
+    issue = subparsers.add_parser("issue", help="일감 처리 워크플로우")
+    issue_sub = issue.add_subparsers(dest="command", required=True)
+    issue_start = issue_sub.add_parser("start", help="Jira 일감 워크플로우 시작/등록")
+    issue_start.add_argument("issue_key", help="Jira 이슈 키")
+    issue_start.add_argument("--summary", default="", help="일감 요약")
+    issue_start.add_argument("--repo", default="", help="연결 repository 경로")
+    issue_start.add_argument("--branch", default="", help="이미 준비된 작업 브랜치")
+    issue_status = issue_sub.add_parser("status", help="일감 워크플로우 상태 변경")
+    issue_status.add_argument("issue_key", help="Jira 이슈 키")
+    issue_status.add_argument("--state", required=True, choices=["assigned", "branch_ready", "in_progress", "implemented", "tested", "pr_ready", "reviewing", "merged", "reported", "done", "blocked"], help="변경할 상태")
+    issue_status.add_argument("--summary", default="", help="일감 요약 보강")
+    issue_status.add_argument("--note", default="", help="상태 변경 메모")
+    issue_status.add_argument("--next-action", default="", help="다음 행동")
+    issue_status.add_argument("--blocker", default="", help="막힘 사유")
+    issue_test = issue_sub.add_parser("record-test", help="일감 테스트 결과 기록")
+    issue_test.add_argument("issue_key", help="Jira 이슈 키")
+    issue_test.add_argument("--command", dest="test_command", required=True, help="실행한 테스트 명령")
+    issue_test.add_argument("--result", required=True, choices=["pass", "fail", "skip"], help="테스트 결과")
+    issue_test.add_argument("--summary", default="", help="테스트 결과 요약")
+    issue_test.add_argument("--repo", default="", help="관련 repository 경로")
+    issue_report = issue_sub.add_parser("report", help="일감 작업 보고 기록")
+    issue_report.add_argument("issue_key", help="Jira 이슈 키")
+    issue_report.add_argument("--summary", required=True, help="보고 내용")
+    issue_report.add_argument("--next-action", default="", help="다음 행동")
+    issue_report.add_argument("--done", action="store_true", help="보고와 함께 완료 처리")
+    issue_show = issue_sub.add_parser("show", help="일감 워크플로우 상세 조회")
+    issue_show.add_argument("issue_key", help="Jira 이슈 키")
+    issue_list = issue_sub.add_parser("list", help="일감 워크플로우 목록")
+    issue_list.add_argument("--all", action="store_true", help="완료/보고된 일감까지 포함")
+    issue_list.add_argument("--format", choices=["text", "json"], default="text", help="출력 형식")
+    issue_sub.add_parser("morning", help="아침 브리핑용 일감 워크플로우 요약")
+    issue_sub.add_parser("evening", help="저녁 브리핑용 일감 워크플로우 요약")
 
     jira = subparsers.add_parser("jira", help="Jira 일감 자동화")
     jira_sub = jira.add_subparsers(dest="command", required=True)
@@ -275,6 +319,7 @@ def build_parser() -> argparse.ArgumentParser:
     dev_commit = dev_sub.add_parser("commit-message", help="커밋 메시지 초안 생성")
     dev_commit.add_argument("--repo", help="대상 repository 경로")
     dev_commit.add_argument("--issue-key", help="커밋 메시지에 넣을 Jira 이슈 키")
+    dev_commit.add_argument("--type", default="fix", choices=["feat", "fix", "refactor", "test", "docs", "chore", "ci", "style", "perf"], help="커밋 작업 태그")
     dev_pr = dev_sub.add_parser("pr-draft", help="PR 제목/본문 초안 생성")
     dev_pr.add_argument("--repo", help="대상 repository 경로")
     dev_pr.add_argument("--issue-key", help="PR에 연결할 Jira 이슈 키")
@@ -356,6 +401,57 @@ def main(argv: list[str] | None = None) -> int:
     config_path = args.config or default_config_path()
     load_env_file(env_path)
     config = load_config(config_path)
+
+    if args.area == "issue" and args.command == "start":
+        start_workflow(config, args.issue_key, summary=args.summary, repo_path=args.repo or None, branch=args.branch)
+        print(format_workflow(config, args.issue_key))
+        return 0
+
+    if args.area == "issue" and args.command == "status":
+        update_workflow_status(
+            config,
+            args.issue_key,
+            status=args.state,
+            summary=args.summary,
+            note=args.note,
+            next_action=args.next_action,
+            blocker=args.blocker,
+        )
+        print(format_workflow(config, args.issue_key))
+        return 0
+
+    if args.area == "issue" and args.command == "record-test":
+        record_test_result(
+            config,
+            args.issue_key,
+            command=args.test_command,
+            result=args.result,
+            summary=args.summary,
+            repo_path=args.repo,
+        )
+        print(format_workflow(config, args.issue_key))
+        return 0
+
+    if args.area == "issue" and args.command == "report":
+        record_work_report(config, args.issue_key, summary=args.summary, next_action=args.next_action, done=args.done)
+        print(format_workflow(config, args.issue_key))
+        return 0
+
+    if args.area == "issue" and args.command == "show":
+        print(format_workflow(config, args.issue_key))
+        return 0
+
+    if args.area == "issue" and args.command == "list":
+        print(format_workflow_list(config, active_only=not args.all, output_format=args.format))
+        return 0
+
+    if args.area == "issue" and args.command == "morning":
+        print(morning_workflow_briefing(config))
+        return 0
+
+    if args.area == "issue" and args.command == "evening":
+        print(evening_workflow_briefing(config))
+        return 0
 
     if args.area == "jira" and args.command == "today":
         print(
@@ -724,11 +820,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.area == "dev" and args.command == "create-branch":
-        print(create_branch(config, args.repo, args.issue_key, args.summary, prefix=args.prefix, base_branch=args.base_branch))
+        result = create_branch(config, args.repo, args.issue_key, args.summary, prefix=args.prefix, base_branch=args.base_branch)
+        record_branch_ready(config, args.issue_key, repo_path=args.repo, branch=branch_name(args.issue_key, args.summary, prefix=args.prefix), summary=args.summary)
+        print(result)
         return 0
 
     if args.area == "dev" and args.command == "commit-message":
-        print(commit_message(config, args.repo, args.issue_key))
+        print(commit_message(config, args.repo, args.issue_key, change_type=args.type))
         return 0
 
     if args.area == "dev" and args.command == "pr-draft":

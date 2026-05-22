@@ -29,11 +29,16 @@ def morning_briefing(config: AppConfig, *, send_slack: bool, dry_run: bool = Fal
     if not config.features.morning_briefing:
         return "출근 브리핑 기능이 꺼져 있습니다."
 
+    from devpilot.features.issue_workflow import morning_workflow_briefing
+
     sections = [
         "출근 브리핑",
         "",
         "[오늘 Jira 일감]",
         format_today_items(config, max_results=10, dry_run=dry_run, send_slack=False),
+        "",
+        "[이어갈 일감 워크플로우]",
+        morning_workflow_briefing(config),
         "",
         "[로컬 Git 상태]",
         format_repo_status(collect_repo_status(config, auto_rebase=not dry_run)),
@@ -52,10 +57,14 @@ def evening_check(config: AppConfig, *, send_slack: bool, dry_run: bool = False)
         return "퇴근 체크 기능이 꺼져 있습니다."
 
     from devpilot.features.dev_insights import evening_checklist
+    from devpilot.features.issue_workflow import evening_workflow_briefing
 
     statuses = collect_repo_status(config, auto_rebase=not dry_run)
     sections = [
         "퇴근 체크",
+        "",
+        "[일감 처리 현황]",
+        evening_workflow_briefing(config),
         "",
         "[퇴근 전 체크리스트]",
         evening_checklist(config),
@@ -173,15 +182,17 @@ def _remote_branch_exists(repo: Path, name: str) -> bool:
     return True
 
 
-def commit_message(config: AppConfig, repo_path: str | None, issue_key: str | None) -> str:
+def commit_message(config: AppConfig, repo_path: str | None, issue_key: str | None, *, change_type: str = "fix") -> str:
     _ensure_dev_tools(config)
     repo = _repo_path(config, repo_path)
     files = staged_files(repo) or changed_files(repo)
     scope = _common_scope(files)
     key = issue_key or _issue_key_from_text(current_branch(repo)) or config.jira.default_project
-    subject = f"{key} {scope} 변경"
-    body = "\n".join(f"- {item}" for item in files[:8]) if files else "- 변경 파일 없음"
-    return f"{subject}\n\n{body}"
+    subject = f"{_commit_type(change_type)}: {key} {scope} 변경"
+    body = ["작업 내용:"]
+    body.extend(f"- {item}" for item in files[:8]) if files else body.append("- 변경 파일 없음")
+    body.extend(["", "확인:", "- 테스트 결과 또는 미수행 사유를 일감 워크플로우에 기록하세요."])
+    return f"{subject}\n\n" + "\n".join(body)
 
 
 def pr_draft(config: AppConfig, repo_path: str | None, issue_key: str | None) -> str:
@@ -338,3 +349,9 @@ def _common_scope(files: list[str]) -> str:
         return "작업"
     first = files[0].split("/", 1)[0].split("\\", 1)[0]
     return first or "작업"
+
+
+def _commit_type(value: str) -> str:
+    allowed = {"feat", "fix", "refactor", "test", "docs", "chore", "ci", "style", "perf"}
+    normalized = value.strip().lower()
+    return normalized if normalized in allowed else "fix"

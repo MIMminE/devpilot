@@ -4,6 +4,7 @@ __pycache__/
 *.egg-info/
 .devpilot/
 .devpilot-smoke/
+.devpilot-*-smoke/
 .env
 .idea/
 config.toml

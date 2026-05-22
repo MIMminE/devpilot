@@ -94,6 +94,7 @@ def _create_state_if_missing(destination: Path) -> None:
         "created_at": datetime.now(timezone.utc).isoformat(),
         "last_runs": {},
         "issue_repositories": {},
+        "issue_workflows": {},
     }
     _write_json(destination, payload)
 
