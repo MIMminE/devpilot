@@ -8,14 +8,16 @@ struct DevPilotMenuBarApp: App {
 
     var body: some Scene {
         Settings {
-            EmptyView()
+            DevPilotSettingsRedirectView {
+                appDelegate.runner.openSetupWindow()
+            }
         }
     }
 }
 
 @MainActor
 final class DevPilotAppDelegate: NSObject, NSApplicationDelegate {
-    private let runner = DevPilotRunner()
+    fileprivate let runner = DevPilotRunner()
     private var statusItem: NSStatusItem?
     private var cancellables: Set<AnyCancellable> = []
     private var pendingSingleClick: DispatchWorkItem?
@@ -170,5 +172,25 @@ final class DevPilotAppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quit() {
         NSApplication.shared.terminate(nil)
+    }
+}
+
+private struct DevPilotSettingsRedirectView: View {
+    let openSettings: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("DevPilot 설정")
+                .font(.title2)
+                .bold()
+
+            Text("실제 설정은 DevPilot 작업 콘솔과 같은 흐름에서 열립니다.")
+                .foregroundStyle(.secondary)
+
+            Button("설정 창 열기", action: openSettings)
+                .buttonStyle(.borderedProminent)
+        }
+        .padding(24)
+        .frame(width: 360, alignment: .leading)
     }
 }
