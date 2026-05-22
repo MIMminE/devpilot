@@ -37,6 +37,9 @@ struct WorkView: View {
     @State private var jiraNewItems: [JiraListItem] = []
     @State private var jiraLastUpdatedText = ""
     @State private var issueRepositoryLinks: [IssueRepositoryLinkRecord] = []
+    @State private var issueWorkflows: [IssueWorkflowRecord] = []
+    @State private var selectedIssueWorkflowKey = ""
+    @State private var isLoadingIssueWorkflows = false
     @State private var hasAutoLoadedJiraMorningItems = false
     @State private var hasPreloadedBriefingData = false
     @State private var jiraTeamFlowItems: [JiraFlowItem] = []
@@ -402,6 +405,7 @@ struct WorkView: View {
         .task(id: selectedSection) {
             await autoLoadJiraMorningItemsIfNeeded()
             await loadCodexProjectsIfNeeded()
+            await loadIssueWorkflowsIfNeeded()
         }
         .onChange(of: runner.activeProfileID) { _ in
             reportDraft = ""
@@ -514,6 +518,8 @@ struct WorkView: View {
             dashboardSection
         case "work", "jira", "tools":
             workSection
+        case "issueFlow":
+            issueFlowSection
         case "repositories", "workspace":
             VStack(alignment: .leading, spacing: 16) {
                 repositoryActions
@@ -559,6 +565,232 @@ struct WorkView: View {
             myJiraDashboardPanel
             commandCenter
         }
+    }
+
+    private var issueFlowSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            DashboardPanel(title: "일감 처리 콘솔", systemImage: "point.3.connected.trianglepath.dotted") {
+                HStack(spacing: 6) {
+                    panelActionChip(title: "새로고침", systemImage: "arrow.clockwise") {
+                        Task { await loadIssueWorkflows(force: true) }
+                    }
+                    .disabled(isLoadingIssueWorkflows)
+                }
+            } content: {
+                HStack(spacing: 10) {
+                    briefingMetric(title: "전체 일감", value: "\(issueWorkflows.count)", systemImage: "checklist", tint: .blue, isAttention: false)
+                    briefingMetric(title: "승인 대기", value: "\(approvalWaitingCount)", systemImage: "hand.tap", tint: .orange, isAttention: approvalWaitingCount > 0)
+                    briefingMetric(title: "진행 중", value: "\(activeWorkflowCount)", systemImage: "arrow.triangle.branch", tint: .green, isAttention: activeWorkflowCount > 0)
+                }
+            }
+
+            if isLoadingIssueWorkflows {
+                DashboardPanel(title: "조회 중", systemImage: "hourglass") {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("일감 워크플로우를 불러오는 중입니다.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } else if issueWorkflows.isEmpty {
+                EmptyDashboardState(systemImage: "checklist", title: "진행 중인 일감이 없습니다", message: "Jira 일감을 분석하거나 workspace를 만들면 이곳에서 단계별 진행 상태를 볼 수 있습니다.")
+            } else {
+                HStack(alignment: .top, spacing: 12) {
+                    DashboardPanel(title: "일감", systemImage: "list.bullet") {
+                        EmptyView()
+                    } content: {
+                        VStack(spacing: 8) {
+                            ForEach(issueWorkflows) { item in
+                                issueWorkflowListRow(item)
+                            }
+                        }
+                    }
+                    .frame(width: 310)
+
+                    if let workflow = selectedIssueWorkflow {
+                        issueWorkflowDetail(workflow)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                    }
+                }
+            }
+        }
+    }
+
+    private var selectedIssueWorkflow: IssueWorkflowRecord? {
+        issueWorkflows.first { $0.issueKey == selectedIssueWorkflowKey } ?? issueWorkflows.first
+    }
+
+    private var approvalWaitingCount: Int {
+        issueWorkflows.filter { workflowStageState($0, stage: .analysis).label == "승인 대기" || workflowStageState($0, stage: .repo).label == "승인 대기" || workflowStageState($0, stage: .workspace).label == "승인 대기" }.count
+    }
+
+    private var activeWorkflowCount: Int {
+        issueWorkflows.filter { !["done", "reported", "merged"].contains($0.status) }.count
+    }
+
+    private func issueWorkflowListRow(_ item: IssueWorkflowRecord) -> some View {
+        Button {
+            selectedIssueWorkflowKey = item.issueKey
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    flowTag(displayIssueKey(item.issueKey), tint: .blue)
+                    Spacer()
+                    flowTag(workflowStatusLabel(item.status), tint: workflowStatusTint(item.status))
+                }
+                Text(item.summary.isEmpty ? "-" : privacyText(item.summary, fallback: "샘플 일감 제목"))
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(nextWorkflowAction(item))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .padding(9)
+            .background(selectedIssueWorkflow?.issueKey == item.issueKey ? Color.accentColor.opacity(0.16) : Color(nsColor: .controlBackgroundColor).opacity(0.58))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func issueWorkflowDetail(_ workflow: IssueWorkflowRecord) -> some View {
+        DashboardPanel(title: "\(displayIssueKey(workflow.issueKey)) 처리 흐름", systemImage: "arrow.triangle.branch") {
+            HStack(spacing: 6) {
+                panelActionChip(title: "상세", systemImage: "doc.text.magnifyingglass") {
+                    Task {
+                        await runDashboardCommand(
+                            ["issue", "show", workflow.issueKey],
+                            title: "\(workflow.issueKey) 상세",
+                            running: "일감 상세를 불러오는 중...",
+                            success: "일감 상세 조회 완료",
+                            failure: "일감 상세 조회 실패"
+                        )
+                    }
+                }
+            }
+        } content: {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(workflow.summary.isEmpty ? "-" : privacyText(workflow.summary, fallback: "샘플 일감 제목"))
+                        .font(.title3.weight(.semibold))
+                        .lineLimit(2)
+                    Text(nextWorkflowAction(workflow))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                issueWorkflowTimeline(workflow)
+                issueApprovalPanel(workflow)
+            }
+        }
+    }
+
+    private func issueWorkflowTimeline(_ workflow: IssueWorkflowRecord) -> some View {
+        VStack(spacing: 8) {
+            ForEach(IssueFlowStage.allCases, id: \.self) { stage in
+                let state = workflowStageState(workflow, stage: stage)
+                HStack(spacing: 10) {
+                    Image(systemName: state.systemImage)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(state.tint)
+                        .frame(width: 24)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(stage.title)
+                            .font(.caption.weight(.semibold))
+                        Text(stage.subtitle)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                    flowTag(state.label, tint: state.tint)
+                }
+                .padding(9)
+                .background(state.tint.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+        }
+    }
+
+    private func issueApprovalPanel(_ workflow: IssueWorkflowRecord) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("현재 승인 지점", systemImage: "hand.tap")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                flowTag(workflow.status, tint: workflowStatusTint(workflow.status))
+            }
+
+            Text(currentApprovalSummary(workflow))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                if workflow.analysis == nil {
+                    Button {
+                        Task { await analyzeWorkflowIssue(workflow) }
+                    } label: {
+                        Label("AI 분석 승인", systemImage: "sparkles")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(runner.isRunning)
+                }
+
+                if workflow.analysis != nil && !workflow.repositories.contains(where: \.isWorkspaceRepo) {
+                    Button {
+                        Task { await prepareWorkflowWorkspace(workflow) }
+                    } label: {
+                        Label("workspace 생성 승인", systemImage: "folder.badge.plus")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(runner.isRunning || workflow.repositories.isEmpty)
+                }
+
+                Button {
+                    Task { await markWorkflowImplemented(workflow) }
+                } label: {
+                    Label("구현 완료 표시", systemImage: "checkmark.seal")
+                }
+                .disabled(runner.isRunning)
+
+                Button {
+                    Task { await loadIssueWorkflows(force: true) }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+            }
+
+            if !workflow.repositories.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("연결 repository")
+                        .font(.caption.weight(.semibold))
+                    ForEach(workflow.repositories.prefix(6)) { repo in
+                        HStack(spacing: 8) {
+                            Image(systemName: repo.isWorkspaceRepo ? "folder.badge.gearshape" : "folder")
+                                .foregroundStyle(repo.isWorkspaceRepo ? Color.green : Color.blue)
+                            Text(repo.repoName)
+                                .font(.caption.weight(.semibold))
+                            Spacer()
+                            Text(repo.branch.isEmpty ? "-" : repo.branch)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        .padding(7)
+                        .background(Color(nsColor: .textBackgroundColor).opacity(0.46))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.42))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private var codexSection: some View {
@@ -2546,7 +2778,8 @@ struct WorkView: View {
         async let memoTargets: [MemoTargetOption] = runner.loadMemoTargets()
         async let codex: Void = loadCodexHealth()
         async let issueLinks: Void = loadIssueRepositoryLinks()
-        _ = await (briefing, records, memoTargets, codex, issueLinks)
+        async let workflows: Void = loadIssueWorkflows(force: false)
+        _ = await (briefing, records, memoTargets, codex, issueLinks, workflows)
         isInitialDataLoading = false
     }
 
@@ -3629,6 +3862,166 @@ struct WorkView: View {
         return value
     }
 
+    private func loadIssueWorkflowsIfNeeded() async {
+        guard selectedSection == "issueFlow", issueWorkflows.isEmpty, !isLoadingIssueWorkflows else {
+            return
+        }
+        await loadIssueWorkflows(force: false)
+    }
+
+    private func loadIssueWorkflows(force: Bool) async {
+        guard force || issueWorkflows.isEmpty else {
+            return
+        }
+        isLoadingIssueWorkflows = true
+        issueWorkflows = await runner.loadIssueWorkflows()
+        if selectedIssueWorkflowKey.isEmpty {
+            selectedIssueWorkflowKey = issueWorkflows.first?.issueKey ?? ""
+        }
+        isLoadingIssueWorkflows = false
+    }
+
+    private func analyzeWorkflowIssue(_ workflow: IssueWorkflowRecord) async {
+        await runDashboardCommand(
+            ["issue", "analyze", workflow.issueKey, "--codex-thread"],
+            title: "\(workflow.issueKey) AI 분석",
+            running: "AI 1차 분석을 요청하는 중...",
+            success: "AI 1차 분석 요청 완료",
+            failure: "AI 1차 분석 요청 실패"
+        )
+        await loadIssueWorkflows(force: true)
+    }
+
+    private func prepareWorkflowWorkspace(_ workflow: IssueWorkflowRecord) async {
+        await runDashboardCommand(
+            ["issue", "workspace", "prepare", workflow.issueKey, "--summary", workflow.summary],
+            title: "\(workflow.issueKey) workspace",
+            running: "일감 workspace를 준비하는 중...",
+            success: "일감 workspace 준비 완료",
+            failure: "일감 workspace 준비 실패"
+        )
+        await loadIssueWorkflows(force: true)
+        await reload()
+    }
+
+    private func markWorkflowImplemented(_ workflow: IssueWorkflowRecord) async {
+        await runDashboardCommand(
+            ["issue", "status", workflow.issueKey, "--state", "implemented", "--note", "구현 완료 승인"],
+            title: "\(workflow.issueKey) 구현 완료",
+            running: "일감 상태를 변경하는 중...",
+            success: "구현 완료로 표시했습니다",
+            failure: "일감 상태 변경 실패"
+        )
+        await loadIssueWorkflows(force: true)
+    }
+
+    private func workflowStageState(_ workflow: IssueWorkflowRecord, stage: IssueFlowStage) -> (label: String, tint: Color, systemImage: String) {
+        switch stage {
+        case .intake:
+            return ("완료", .blue, "checkmark.circle.fill")
+        case .analysis:
+            if workflow.analysis != nil {
+                return ("완료", .green, "checkmark.circle.fill")
+            }
+            return ("승인 대기", .orange, "hand.tap.fill")
+        case .repo:
+            if workflow.repositories.isEmpty {
+                return ("대기", .secondary, "circle")
+            }
+            return ("승인 대기", .orange, "hand.tap.fill")
+        case .workspace:
+            if workflow.repositories.contains(where: \.isWorkspaceRepo) {
+                return ("완료", .green, "checkmark.circle.fill")
+            }
+            if workflow.repositories.isEmpty {
+                return ("대기", .secondary, "circle")
+            }
+            return ("승인 대기", .orange, "hand.tap.fill")
+        case .implementation:
+            if ["implemented", "tested", "pr_ready", "reviewing", "merged", "reported", "done"].contains(workflow.status) {
+                return ("완료", .green, "checkmark.circle.fill")
+            }
+            if workflow.repositories.contains(where: \.isWorkspaceRepo) {
+                return ("진행 가능", .blue, "play.circle.fill")
+            }
+            return ("대기", .secondary, "circle")
+        case .test:
+            if !workflow.tests.isEmpty {
+                return ("완료", .green, "checkmark.circle.fill")
+            }
+            if ["implemented", "tested"].contains(workflow.status) {
+                return ("승인 대기", .orange, "hand.tap.fill")
+            }
+            return ("대기", .secondary, "circle")
+        case .report:
+            if !workflow.reports.isEmpty || ["reported", "done", "merged"].contains(workflow.status) {
+                return ("완료", .green, "checkmark.circle.fill")
+            }
+            if !workflow.tests.isEmpty {
+                return ("승인 대기", .orange, "hand.tap.fill")
+            }
+            return ("대기", .secondary, "circle")
+        }
+    }
+
+    private func nextWorkflowAction(_ workflow: IssueWorkflowRecord) -> String {
+        if workflow.analysis == nil {
+            return "AI 1차 분석 승인이 필요합니다."
+        }
+        if workflow.repositories.isEmpty {
+            return "변경할 repository를 확정해야 합니다."
+        }
+        if !workflow.repositories.contains(where: \.isWorkspaceRepo) {
+            return "일감 workspace 생성 승인이 필요합니다."
+        }
+        if !["implemented", "tested", "reported", "done"].contains(workflow.status) {
+            return "구현을 진행하고 완료 표시를 남기세요."
+        }
+        if workflow.tests.isEmpty {
+            return "테스트 결과를 기록하세요."
+        }
+        if workflow.reports.isEmpty {
+            return "오늘 한 일/작업 보고를 등록하세요."
+        }
+        return "완료 처리와 workspace 정리를 확인하세요."
+    }
+
+    private func currentApprovalSummary(_ workflow: IssueWorkflowRecord) -> String {
+        if workflow.analysis == nil {
+            return "이 일감의 유형, As-Is/To-Be, 변경 후보 repository를 Codex에 먼저 분석 요청합니다."
+        }
+        if workflow.repositories.isEmpty {
+            return "AI 분석 결과를 보고 변경할 repository를 확정해야 합니다. 현재 연결된 repository가 없습니다."
+        }
+        if !workflow.repositories.contains(where: \.isWorkspaceRepo) {
+            return "아래 repository들로 Jira 키가 포함된 작업 브랜치와 worktree workspace를 생성할 수 있습니다."
+        }
+        return "workspace가 준비되었습니다. Codex와 구현을 진행하고 단계별로 테스트/보고를 승인하세요."
+    }
+
+    private func workflowStatusLabel(_ value: String) -> String {
+        switch value {
+        case "assigned": return "할당"
+        case "branch_ready": return "브랜치"
+        case "in_progress": return "작업 중"
+        case "implemented": return "구현"
+        case "tested": return "테스트"
+        case "reported": return "보고"
+        case "done": return "완료"
+        case "blocked": return "막힘"
+        default: return value
+        }
+    }
+
+    private func workflowStatusTint(_ value: String) -> Color {
+        switch value {
+        case "blocked": return .red
+        case "done", "reported", "merged": return .green
+        case "implemented", "tested", "branch_ready": return .blue
+        default: return .orange
+        }
+    }
+
     private func loadJiraMorningItems(notifyLocal: Bool) async {
         await loadJiraMorningItems(notifyLocal: notifyLocal, showFailureNotice: true)
     }
@@ -3857,6 +4250,40 @@ struct WorkView: View {
 
     private func showNotice(title: String, message: String, succeeded: Bool) {
         notice = WorkNotice(title: maskedOutput(title), message: maskedOutput(message), succeeded: succeeded)
+    }
+}
+
+private enum IssueFlowStage: CaseIterable {
+    case intake
+    case analysis
+    case repo
+    case workspace
+    case implementation
+    case test
+    case report
+
+    var title: String {
+        switch self {
+        case .intake: return "일감 수신"
+        case .analysis: return "AI 분석"
+        case .repo: return "repo 확정"
+        case .workspace: return "workspace 준비"
+        case .implementation: return "업무 처리"
+        case .test: return "테스트"
+        case .report: return "보고/완료"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .intake: return "Jira 일감이 워크플로우에 등록됨"
+        case .analysis: return "유형, As-Is/To-Be, 변경 후보 파악"
+        case .repo: return "변경할 repository 승인"
+        case .workspace: return "worktree와 작업 브랜치 생성"
+        case .implementation: return "Codex와 실제 변경 작업"
+        case .test: return "테스트 실행과 결과 기록"
+        case .report: return "보고 등록, 완료 처리, 정리"
+        }
     }
 }
 

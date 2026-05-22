@@ -879,6 +879,32 @@ final class DevPilotRunner: NSObject, ObservableObject, NSWindowDelegate {
         return Self.parseIssueRepositoryLinks(result.output)
     }
 
+    func loadIssueWorkflows() async -> [IssueWorkflowRecord] {
+        let result = await Self.executeDetached(["issue", "list", "--all", "--format", "json"])
+        lastOutput = result.output
+        guard result.succeeded, let data = result.output.data(using: .utf8),
+              let raw = try? JSONDecoder().decode([String: IssueWorkflowRecord].self, from: data) else {
+            status = "일감 워크플로우 조회 실패"
+            return []
+        }
+        status = "일감 워크플로우를 불러왔습니다"
+        return raw.map { key, value in
+            IssueWorkflowRecord(
+                issueKey: value.issueKey.isEmpty ? key : value.issueKey,
+                summary: value.summary,
+                status: value.status,
+                updatedAt: value.updatedAt,
+                repositories: value.repositories,
+                analysis: value.analysis,
+                tests: value.tests,
+                reports: value.reports,
+                nextActions: value.nextActions,
+                blockers: value.blockers
+            )
+        }
+        .sorted { $0.updatedAt > $1.updatedAt }
+    }
+
     func loadTodayCommits(path: String) async -> String {
         status = "오늘 커밋을 불러오는 중..."
         let result = await Self.executeDetached(["repo", "commits", "--repo", path])

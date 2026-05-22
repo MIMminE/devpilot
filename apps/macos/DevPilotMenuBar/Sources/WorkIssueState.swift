@@ -117,3 +117,118 @@ struct IssueWorkStateBadge: View {
         .help(isPrivacyMasked ? "샘플 저장소 연결 상태입니다." : state.detail)
     }
 }
+
+struct IssueWorkflowRecord: Identifiable, Decodable, Hashable {
+    let issueKey: String
+    let summary: String
+    let status: String
+    let updatedAt: String
+    let repositories: [IssueWorkflowRepositoryRecord]
+    let analysis: IssueWorkflowAnalysisRecord?
+    let tests: [IssueWorkflowTestRecord]
+    let reports: [IssueWorkflowReportRecord]
+    let nextActions: [String]
+    let blockers: [String]
+
+    var id: String { issueKey }
+
+    enum CodingKeys: String, CodingKey {
+        case issueKey = "issue_key"
+        case summary
+        case status
+        case updatedAt = "updated_at"
+        case repositories
+        case analysis
+        case tests
+        case reports
+        case nextActions = "next_actions"
+        case blockers
+    }
+
+    init(
+        issueKey: String,
+        summary: String,
+        status: String,
+        updatedAt: String,
+        repositories: [IssueWorkflowRepositoryRecord],
+        analysis: IssueWorkflowAnalysisRecord?,
+        tests: [IssueWorkflowTestRecord],
+        reports: [IssueWorkflowReportRecord],
+        nextActions: [String],
+        blockers: [String]
+    ) {
+        self.issueKey = issueKey
+        self.summary = summary
+        self.status = status
+        self.updatedAt = updatedAt
+        self.repositories = repositories
+        self.analysis = analysis
+        self.tests = tests
+        self.reports = reports
+        self.nextActions = nextActions
+        self.blockers = blockers
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            issueKey: try container.decodeIfPresent(String.self, forKey: .issueKey) ?? "",
+            summary: try container.decodeIfPresent(String.self, forKey: .summary) ?? "",
+            status: try container.decodeIfPresent(String.self, forKey: .status) ?? "assigned",
+            updatedAt: try container.decodeIfPresent(String.self, forKey: .updatedAt) ?? "",
+            repositories: try container.decodeIfPresent([IssueWorkflowRepositoryRecord].self, forKey: .repositories) ?? [],
+            analysis: try container.decodeIfPresent(IssueWorkflowAnalysisRecord.self, forKey: .analysis),
+            tests: try container.decodeIfPresent([IssueWorkflowTestRecord].self, forKey: .tests) ?? [],
+            reports: try container.decodeIfPresent([IssueWorkflowReportRecord].self, forKey: .reports) ?? [],
+            nextActions: try container.decodeIfPresent([String].self, forKey: .nextActions) ?? [],
+            blockers: try container.decodeIfPresent([String].self, forKey: .blockers) ?? []
+        )
+    }
+}
+
+struct IssueWorkflowRepositoryRecord: Identifiable, Decodable, Hashable {
+    let repoPath: String
+    let repoName: String
+    let summary: String
+    let branch: String
+
+    var id: String { repoPath }
+    var isWorkspaceRepo: Bool { repoPath.contains("issue-workspaces") }
+
+    enum CodingKeys: String, CodingKey {
+        case repoPath = "repo_path"
+        case repoName = "repo_name"
+        case summary
+        case branch
+    }
+}
+
+struct IssueWorkflowAnalysisRecord: Decodable, Hashable {
+    let promptPath: String
+    let threadID: String
+    let threadName: String
+    let responsePath: String
+
+    enum CodingKeys: String, CodingKey {
+        case promptPath = "prompt_path"
+        case threadID = "thread_id"
+        case threadName = "thread_name"
+        case responsePath = "response_path"
+    }
+}
+
+struct IssueWorkflowTestRecord: Decodable, Hashable {
+    let command: String
+    let result: String
+    let summary: String
+}
+
+struct IssueWorkflowReportRecord: Decodable, Hashable {
+    let summary: String
+    let recordedAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case summary
+        case recordedAt = "recorded_at"
+    }
+}

@@ -59,10 +59,20 @@ struct WorkSidebarView: View {
                     title: "작업",
                     systemImage: "checklist",
                     detail: nil,
-                    isSelected: selectedSection == "work" || selectedSection == "jira" || selectedSection == "tools",
+                    isSelected: selectedSection == "work" || selectedSection == "jira" || selectedSection == "tools" || selectedSection == "issueFlow",
                     isCollapsed: isCollapsed
                 ) {
                     selectedSection = "work"
+                }
+
+                WorkSidebarButton(
+                    title: "일감 콘솔",
+                    systemImage: "point.3.connected.trianglepath.dotted",
+                    detail: nil,
+                    isSelected: selectedSection == "issueFlow",
+                    isCollapsed: isCollapsed
+                ) {
+                    selectedSection = "issueFlow"
                 }
 
                 WorkSidebarButton(
