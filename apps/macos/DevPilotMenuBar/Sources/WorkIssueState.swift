@@ -201,6 +201,21 @@ struct IssueWorkflowRepositoryRecord: Identifiable, Decodable, Hashable {
         case summary
         case branch
     }
+
+    init(repoPath: String, repoName: String, summary: String, branch: String) {
+        self.repoPath = repoPath
+        self.repoName = repoName
+        self.summary = summary
+        self.branch = branch
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        repoPath = try container.decodeIfPresent(String.self, forKey: .repoPath) ?? ""
+        repoName = try container.decodeIfPresent(String.self, forKey: .repoName) ?? ""
+        summary = try container.decodeIfPresent(String.self, forKey: .summary) ?? ""
+        branch = try container.decodeIfPresent(String.self, forKey: .branch) ?? ""
+    }
 }
 
 struct IssueWorkflowAnalysisRecord: Decodable, Hashable {
@@ -215,12 +230,33 @@ struct IssueWorkflowAnalysisRecord: Decodable, Hashable {
         case threadName = "thread_name"
         case responsePath = "response_path"
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        promptPath = try container.decodeIfPresent(String.self, forKey: .promptPath) ?? ""
+        threadID = try container.decodeIfPresent(String.self, forKey: .threadID) ?? ""
+        threadName = try container.decodeIfPresent(String.self, forKey: .threadName) ?? ""
+        responsePath = try container.decodeIfPresent(String.self, forKey: .responsePath) ?? ""
+    }
 }
 
 struct IssueWorkflowTestRecord: Decodable, Hashable {
     let command: String
     let result: String
     let summary: String
+
+    enum CodingKeys: String, CodingKey {
+        case command
+        case result
+        case summary
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        command = try container.decodeIfPresent(String.self, forKey: .command) ?? ""
+        result = try container.decodeIfPresent(String.self, forKey: .result) ?? ""
+        summary = try container.decodeIfPresent(String.self, forKey: .summary) ?? ""
+    }
 }
 
 struct IssueWorkflowReportRecord: Decodable, Hashable {
@@ -230,5 +266,11 @@ struct IssueWorkflowReportRecord: Decodable, Hashable {
     enum CodingKeys: String, CodingKey {
         case summary
         case recordedAt = "recorded_at"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        summary = try container.decodeIfPresent(String.self, forKey: .summary) ?? ""
+        recordedAt = try container.decodeIfPresent(String.self, forKey: .recordedAt) ?? ""
     }
 }
