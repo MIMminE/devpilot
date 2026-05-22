@@ -45,6 +45,7 @@ from devpilot.features.issue_workflow import (
     start_workflow,
     update_workflow_status,
 )
+from devpilot.features.issue_workspace import cleanup_issue_workspace, format_issue_workspace, prepare_issue_workspace
 from devpilot.features.jira_daily import assign_issue, format_today_items
 from devpilot.features.jira_flow import team_flow
 from devpilot.features.jira_issues import create_issue, issue_detail
@@ -111,6 +112,21 @@ def build_parser() -> argparse.ArgumentParser:
     issue_report.add_argument("--done", action="store_true", help="보고와 함께 완료 처리")
     issue_show = issue_sub.add_parser("show", help="일감 워크플로우 상세 조회")
     issue_show.add_argument("issue_key", help="Jira 이슈 키")
+    issue_workspace = issue_sub.add_parser("workspace", help="일감 단위 worktree workspace 관리")
+    issue_workspace_sub = issue_workspace.add_subparsers(dest="workspace_command", required=True)
+    issue_workspace_prepare = issue_workspace_sub.add_parser("prepare", help="일감 workspace를 만들고 repository worktree를 배치")
+    issue_workspace_prepare.add_argument("issue_key", help="Jira 이슈 키")
+    issue_workspace_prepare.add_argument("--repo", action="append", default=[], help="workspace에 포함할 관리 repository 경로. 여러 번 지정 가능")
+    issue_workspace_prepare.add_argument("--summary", default="", help="브랜치명과 context에 사용할 일감 요약")
+    issue_workspace_prepare.add_argument("--prefix", default="feature", help="브랜치 prefix")
+    issue_workspace_prepare.add_argument("--base-branch", default="", help="작업 브랜치를 시작할 기준 브랜치. 비우면 repository 설정값 사용")
+    issue_workspace_prepare.add_argument("--force", action="store_true", help="기존 workspace/worktree를 재생성")
+    issue_workspace_status = issue_workspace_sub.add_parser("status", help="일감 workspace 상태 조회")
+    issue_workspace_status.add_argument("issue_key", help="Jira 이슈 키")
+    issue_workspace_status.add_argument("--format", choices=["text", "json"], default="text", help="출력 형식")
+    issue_workspace_cleanup = issue_workspace_sub.add_parser("cleanup", help="일감 workspace worktree 정리")
+    issue_workspace_cleanup.add_argument("issue_key", help="Jira 이슈 키")
+    issue_workspace_cleanup.add_argument("--force", action="store_true", help="변경 파일 확인 실패 시에도 강제 제거")
     issue_list = issue_sub.add_parser("list", help="일감 워크플로우 목록")
     issue_list.add_argument("--all", action="store_true", help="완료/보고된 일감까지 포함")
     issue_list.add_argument("--format", choices=["text", "json"], default="text", help="출력 형식")
@@ -457,6 +473,27 @@ def main(argv: list[str] | None = None) -> int:
     if args.area == "issue" and args.command == "show":
         print(format_workflow(config, args.issue_key))
         return 0
+
+    if args.area == "issue" and args.command == "workspace":
+        if args.workspace_command == "prepare":
+            print(
+                prepare_issue_workspace(
+                    config,
+                    args.issue_key,
+                    repo_paths=args.repo,
+                    summary=args.summary,
+                    prefix=args.prefix,
+                    base_branch=args.base_branch,
+                    force=args.force,
+                )
+            )
+            return 0
+        if args.workspace_command == "status":
+            print(format_issue_workspace(args.issue_key, output_format=args.format))
+            return 0
+        if args.workspace_command == "cleanup":
+            print(cleanup_issue_workspace(args.issue_key, force=args.force))
+            return 0
 
     if args.area == "issue" and args.command == "list":
         print(format_workflow_list(config, active_only=not args.all, output_format=args.format))

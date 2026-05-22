@@ -395,7 +395,9 @@ def _repo_states(config: AppConfig, workflow: dict) -> list[WorkflowRepoState]:
     states: list[WorkflowRepoState] = []
     for item in _repository_items(workflow):
         repo = Path(str(item.get("repo_path") or "")).expanduser().resolve()
-        if repo not in managed or not (repo / ".git").is_dir():
+        is_managed_source = repo in managed
+        is_git_worktree = (repo / ".git").exists()
+        if not is_git_worktree or (not is_managed_source and "issue-workspaces" not in str(repo)):
             continue
         try:
             branch = current_branch(repo)
