@@ -509,7 +509,7 @@ def _workflow_map(state: dict) -> dict[str, dict]:
 def _normalize_issue_key(issue_key: str) -> str:
     key = issue_key.strip().upper()
     if not key:
-        raise RuntimeError("Jira issue key is required.")
+        raise RuntimeError("Issue key is required.")
     return key
 
 

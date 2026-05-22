@@ -83,8 +83,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     issue = subparsers.add_parser("issue", help="일감 처리 워크플로우")
     issue_sub = issue.add_subparsers(dest="command", required=True)
-    issue_start = issue_sub.add_parser("start", help="Jira 일감 워크플로우 시작/등록")
-    issue_start.add_argument("issue_key", help="Jira 이슈 키")
+    issue_start = issue_sub.add_parser("start", help="일감 워크플로우 시작/등록")
+    issue_start.add_argument("issue_key", help="일감 키. 예: Jira 키 또는 LOCAL-001")
     issue_start.add_argument("--summary", default="", help="일감 요약")
     issue_start.add_argument("--repo", default="", help="연결 repository 경로")
     issue_start.add_argument("--branch", default="", help="이미 준비된 작업 브랜치")

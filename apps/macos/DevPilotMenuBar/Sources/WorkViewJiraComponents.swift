@@ -254,3 +254,89 @@ struct JiraQuickCreateSheet: View {
         .frame(width: 560)
     }
 }
+
+struct ManualIssueCreateSheet: View {
+    @Binding var issueKey: String
+    @Binding var summary: String
+    @Binding var detail: String
+    @Binding var issueType: String
+    let isRunning: Bool
+    let onGenerateKey: () -> Void
+    let onCancel: () -> Void
+    let onCreate: () -> Void
+
+    private let issueTypes = ["Task", "Bug", "Feature", "Ops", "Research", "Chore"]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 12) {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 42, height: 42)
+                    .background(Color.accentColor.opacity(0.14))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("직접 일감 등록")
+                        .font(.title3.weight(.semibold))
+                    Text("Jira 없이도 같은 분석, workspace, 테스트, 보고 흐름으로 처리합니다.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    TextField("LOCAL-20260522-001", text: $issueKey)
+                        .textFieldStyle(.roundedBorder)
+                    Button {
+                        onGenerateKey()
+                    } label: {
+                        Label("키 생성", systemImage: "wand.and.stars")
+                    }
+                }
+
+                HStack(spacing: 10) {
+                    Picker("종류", selection: $issueType) {
+                        ForEach(issueTypes, id: \.self) { item in
+                            Text(item).tag(item)
+                        }
+                    }
+                    .frame(width: 190)
+
+                    TextField("일감 제목", text: $summary)
+                        .textFieldStyle(.roundedBorder)
+                }
+
+                TextEditor(text: $detail)
+                    .font(.body)
+                    .frame(minHeight: 120)
+                    .scrollContentBackground(.hidden)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color(nsColor: .separatorColor).opacity(0.55))
+                    )
+            }
+
+            HStack {
+                Text("등록 후 일감 콘솔에서 AI 분석 승인부터 이어갈 수 있습니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("취소", action: onCancel)
+                    .disabled(isRunning)
+                Button(isRunning ? "등록 중..." : "등록") {
+                    onCreate()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(isRunning || issueKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(20)
+        .frame(width: 580)
+    }
+}

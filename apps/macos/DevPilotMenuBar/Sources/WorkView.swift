@@ -41,6 +41,11 @@ struct WorkView: View {
     @State private var selectedIssueWorkflowKey = ""
     @State private var selectedIssueFlowStage = IssueFlowStage.analysis
     @State private var isLoadingIssueWorkflows = false
+    @State private var isManualIssueCreatePresented = false
+    @State private var manualIssueKey = ""
+    @State private var manualIssueSummary = ""
+    @State private var manualIssueDetail = ""
+    @State private var manualIssueType = "Task"
     @State private var hasAutoLoadedJiraMorningItems = false
     @State private var hasPreloadedBriefingData = false
     @State private var jiraTeamFlowItems: [JiraFlowItem] = []
@@ -449,6 +454,24 @@ struct WorkView: View {
                 }
             )
         }
+        .sheet(isPresented: $isManualIssueCreatePresented) {
+            ManualIssueCreateSheet(
+                issueKey: $manualIssueKey,
+                summary: $manualIssueSummary,
+                detail: $manualIssueDetail,
+                issueType: $manualIssueType,
+                isRunning: runner.isRunning,
+                onGenerateKey: {
+                    manualIssueKey = generatedManualIssueKey()
+                },
+                onCancel: {
+                    isManualIssueCreatePresented = false
+                },
+                onCreate: {
+                    Task { await createManualIssue() }
+                }
+            )
+        }
         .alert("변경 파일이 있습니다", isPresented: $showDirtyWarning, presenting: pendingAction) { _ in
             Button("확인", role: .cancel) {}
         } message: { action in
@@ -572,6 +595,12 @@ struct WorkView: View {
         VStack(alignment: .leading, spacing: 16) {
             DashboardPanel(title: "일감 처리 콘솔", systemImage: "point.3.connected.trianglepath.dotted") {
                 HStack(spacing: 6) {
+                    panelActionChip(title: "직접 등록", systemImage: "plus.app") {
+                        if manualIssueKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            manualIssueKey = generatedManualIssueKey()
+                        }
+                        isManualIssueCreatePresented = true
+                    }
                     panelActionChip(title: "새로고침", systemImage: "arrow.clockwise") {
                         Task { await loadIssueWorkflows(force: true) }
                     }
@@ -3916,6 +3945,32 @@ struct WorkView: View {
             quickJiraLabels = ""
             await loadJiraMorningItems(notifyLocal: false)
         }
+    }
+
+    private func createManualIssue() async {
+        let key = manualIssueKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? generatedManualIssueKey() : manualIssueKey
+        let summary = manualIssueSummary.trimmingCharacters(in: .whitespacesAndNewlines)
+        let detail = manualIssueDetail.trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = manualIssueType.isEmpty ? summary : "[\(manualIssueType)] \(summary)"
+        let storedSummary = detail.isEmpty ? title : "\(title) - \(detail)"
+        let result = await runner.registerManualIssue(issue: key, summary: storedSummary)
+        lastMessage = result.displayText
+        showNotice(title: "직접 일감 등록", message: result.displayText, succeeded: result.succeeded)
+        if result.succeeded {
+            isManualIssueCreatePresented = false
+            manualIssueKey = ""
+            manualIssueSummary = ""
+            manualIssueDetail = ""
+            manualIssueType = "Task"
+            await loadIssueWorkflows(force: true)
+        }
+    }
+
+    private func generatedManualIssueKey() -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return "LOCAL-\(formatter.string(from: Date()))"
     }
 
     private func preloadBriefingData() async {

@@ -770,6 +770,21 @@ final class DevPilotRunner: NSObject, ObservableObject, NSWindowDelegate {
         return DevPilotCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
     }
 
+    func registerManualIssue(issue: String, summary: String) async -> DevPilotCommandResult {
+        let normalizedIssue = issue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedSummary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedIssue.isEmpty, !normalizedSummary.isEmpty else {
+            return DevPilotCommandResult(succeeded: false, output: "", summary: "일감 키와 제목을 입력해 주세요.")
+        }
+        let result = await runDashboardCommand(
+            ["issue", "start", normalizedIssue, "--summary", normalizedSummary],
+            runningStatus: "\(normalizedIssue) 일감 등록 중...",
+            successStatus: "\(normalizedIssue) 일감 등록 완료",
+            failureStatus: "\(normalizedIssue) 일감 등록 실패"
+        )
+        return result
+    }
+
     func recommendIssueRepository(issue: String, summary: String) async -> DevPilotCommandResult {
         let result = await runDashboardCommand(
             ["dev", "recommend-repo", issue, "--summary", summary],
