@@ -32,6 +32,7 @@ from devpilot.features.issue_repositories import (
     link_issue_repository,
     unlink_issue_repository,
 )
+from devpilot.features.issue_analysis import draft_issue_analysis
 from devpilot.features.issue_workflow import (
     evening_workflow_briefing,
     format_workflow,
@@ -85,6 +86,9 @@ def build_parser() -> argparse.ArgumentParser:
     issue_start.add_argument("--summary", default="", help="일감 요약")
     issue_start.add_argument("--repo", default="", help="연결 repository 경로")
     issue_start.add_argument("--branch", default="", help="이미 준비된 작업 브랜치")
+    issue_analyze = issue_sub.add_parser("analyze", help="Jira 일감을 Codex 1차 분석 요청서로 정리")
+    issue_analyze.add_argument("issue_key", help="Jira 이슈 키")
+    issue_analyze.add_argument("--format", choices=["text", "json"], default="text", help="출력 형식")
     issue_status = issue_sub.add_parser("status", help="일감 워크플로우 상태 변경")
     issue_status.add_argument("issue_key", help="Jira 이슈 키")
     issue_status.add_argument("--state", required=True, choices=["assigned", "branch_ready", "in_progress", "implemented", "tested", "pr_ready", "reviewing", "merged", "reported", "done", "blocked"], help="변경할 상태")
@@ -156,6 +160,7 @@ def build_parser() -> argparse.ArgumentParser:
     jira_watch.add_argument("--max-results", type=int, default=20, help="최대 조회 개수")
     jira_watch.add_argument("--include-existing", action="store_true", help="첫 실행에서도 최근 이슈를 출력")
     jira_watch.add_argument("--send-slack", action="store_true", help="새 이슈가 있으면 Slack alerts 채널로 전송")
+    jira_watch.add_argument("--analyze", action="store_true", help="새 이슈별 Codex 1차 분석 요청서를 함께 생성")
     jira_flow = jira_sub.add_parser("flow", help="팀 Jira 처리 흐름 조회")
     jira_flow.add_argument("--days", type=int, default=7, help="조회 기간")
     jira_flow.add_argument("--max-results", type=int, default=80, help="최대 조회 개수")
@@ -407,6 +412,10 @@ def main(argv: list[str] | None = None) -> int:
         print(format_workflow(config, args.issue_key))
         return 0
 
+    if args.area == "issue" and args.command == "analyze":
+        print(draft_issue_analysis(config, args.issue_key, output_format=args.format))
+        return 0
+
     if args.area == "issue" and args.command == "status":
         update_workflow_status(
             config,
@@ -515,6 +524,7 @@ def main(argv: list[str] | None = None) -> int:
                 max_results=args.max_results,
                 include_existing=args.include_existing,
                 send_slack=args.send_slack,
+                analyze=args.analyze,
             )
         )
         return 0

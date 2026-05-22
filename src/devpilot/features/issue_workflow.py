@@ -165,6 +165,26 @@ def record_test_result(
     return workflow
 
 
+def record_analysis_request(config: AppConfig, issue_key: str, *, prompt_path: str, summary: str = "") -> dict:
+    key = _normalize_issue_key(issue_key)
+    now = _now(config)
+    state = read_state()
+    workflows = _workflow_map(state)
+    workflow = _ensure_workflow(workflows, key, summary=summary, now=now)
+    workflow["summary"] = summary.strip() or workflow.get("summary", "")
+    workflow["status"] = _advance_status(str(workflow.get("status") or "assigned"), "assigned")
+    workflow["analysis"] = {
+        "prompt_path": str(Path(prompt_path).expanduser()),
+        "requested_at": now,
+    }
+    workflow["updated_at"] = now
+    _append_unique(workflow, "next_actions", "Codex 1차 분석 결과를 확인하고 작업 범위를 확정")
+    _append_event(workflow, "analysis_requested", "Codex 1차 분석 요청서를 준비했습니다.", now)
+    state["issue_workflows"] = workflows
+    write_state(state)
+    return workflow
+
+
 def record_work_report(
     config: AppConfig,
     issue_key: str,
@@ -265,6 +285,13 @@ def _format_workflow_detail(config: AppConfig, key: str, workflow: dict) -> str:
         lines.extend(f"- {item.get('repo_name')} | {item.get('repo_path')} | branch: {item.get('branch') or '-'}" for item in repos)
     else:
         lines.append("- 연결 repository 없음")
+    analysis = workflow.get("analysis") if isinstance(workflow.get("analysis"), dict) else {}
+    lines.extend(["", "[1차 분석]"])
+    if analysis:
+        lines.append(f"- 요청: {analysis.get('requested_at') or '-'}")
+        lines.append(f"- Codex 프롬프트: {analysis.get('prompt_path') or '-'}")
+    else:
+        lines.append("- 기록 없음")
     lines.extend(["", "[테스트]"])
     tests = [item for item in workflow.get("tests", []) if isinstance(item, dict)]
     if tests:
@@ -306,6 +333,9 @@ def _format_routine_item(config: AppConfig, key: str, workflow: dict, *, morning
     for item in repo_states[:2]:
         dirty = f", 변경 {item.dirty_count}개" if item.dirty_count else ""
         lines.append(f"  - repository: {item.repo_name} / {item.branch}{dirty}")
+    analysis = workflow.get("analysis") if isinstance(workflow.get("analysis"), dict) else {}
+    if analysis:
+        lines.append(f"  - 1차 분석: 요청 완료 / {analysis.get('prompt_path') or '-'}")
     next_actions = [str(item) for item in workflow.get("next_actions", []) if str(item).strip()]
     blockers = [str(item) for item in workflow.get("blockers", []) if str(item).strip()]
     tests = [item for item in workflow.get("tests", []) if isinstance(item, dict)]

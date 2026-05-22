@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import json
 import re
 from zoneinfo import ZoneInfo
 
 from devpilot.app_state import read_state, write_state
 from devpilot.config import AppConfig
+from devpilot.features.issue_analysis import draft_issue_analysis
 from devpilot.integrations.jira import JiraClient
 from devpilot.integrations.slack import SlackClient, section_block
 
@@ -20,6 +22,7 @@ def check_new_issues(
     max_results: int = 20,
     include_existing: bool = False,
     send_slack: bool = False,
+    analyze: bool = False,
 ) -> str:
     if not config.features.jira:
         return "Jira 기능이 꺼져 있습니다."
@@ -53,6 +56,8 @@ def check_new_issues(
         return f"새로 등록된 Jira 일감이 없습니다. 기준: {since.strftime('%Y-%m-%d %H:%M')}"
 
     output = _format_issues(config, new_issues)
+    if analyze:
+        output = "\n".join([output, "", _analyze_new_issues(config, new_issues)]).strip()
     if send_slack and config.slack.destination_configured("alerts"):
         SlackClient(config.slack, destination="alerts").send(output, blocks=[section_block(output)])
     return output
@@ -125,4 +130,20 @@ def _format_issues(config: AppConfig, issues: list[dict]) -> str:
         lines.append(f"  유형: {issue_type} | 우선순위: {priority} | 담당: {assignee} | 등록: {created_text} | 보고자: {reporter}")
         if url:
             lines.append(f"  링크: {url}")
+    return "\n".join(lines)
+
+
+def _analyze_new_issues(config: AppConfig, issues: list[dict]) -> str:
+    lines = ["Codex 1차 분석 요청"]
+    for issue in issues:
+        key = str(issue.get("key") or "").strip()
+        if not key:
+            continue
+        try:
+            payload = draft_issue_analysis(config, key, output_format="json")
+            detail = json.loads(payload)
+        except Exception as exc:
+            lines.append(f"- {key}: 분석 요청 실패 - {exc}")
+            continue
+        lines.append(f"- {key}: {detail.get('prompt_path')}")
     return "\n".join(lines)
