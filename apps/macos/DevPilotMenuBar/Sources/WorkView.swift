@@ -40,9 +40,11 @@ struct WorkView: View {
     @State private var issueWorkflows: [IssueWorkflowRecord] = []
     @State private var selectedIssueWorkflowKey = ""
     @State private var selectedIssueFlowStage = IssueFlowStage.analysis
+    @State private var selectedIssueProject = "전체"
     @State private var isLoadingIssueWorkflows = false
     @State private var isManualIssueCreatePresented = false
     @State private var manualIssueKey = ""
+    @State private var manualIssueProject = ""
     @State private var manualIssueSummary = ""
     @State private var manualIssueDetail = ""
     @State private var manualIssueType = "Task"
@@ -64,6 +66,8 @@ struct WorkView: View {
     @State private var codexHealth = CodexHealthStatus.unknown
     @State private var codexProjects: [CodexProjectRecord] = []
     @State private var isLoadingCodexProjects = false
+    @State private var tokenStatuses: [TokenStatusRecord] = []
+    @State private var isLoadingTokenStatuses = false
     @State private var selectedWorkIssueKey = ""
     @State private var selectedIssueDetail = JiraIssueDetailRecord.empty
     @State private var isLoadingIssueDetail = false
@@ -412,6 +416,7 @@ struct WorkView: View {
             await autoLoadJiraMorningItemsIfNeeded()
             await loadCodexProjectsIfNeeded()
             await loadIssueWorkflowsIfNeeded()
+            await loadTokenStatusesIfNeeded()
         }
         .onChange(of: runner.activeProfileID) { _ in
             reportDraft = ""
@@ -428,6 +433,7 @@ struct WorkView: View {
             jiraTeamFlowItems = []
             submittedReports = []
             workMemos = []
+            tokenStatuses = []
             isInitialDataLoading = false
             Task {
                 await initialDataLoad(notify: true)
@@ -457,6 +463,7 @@ struct WorkView: View {
         .sheet(isPresented: $isManualIssueCreatePresented) {
             ManualIssueCreateSheet(
                 issueKey: $manualIssueKey,
+                project: $manualIssueProject,
                 summary: $manualIssueSummary,
                 detail: $manualIssueDetail,
                 issueType: $manualIssueType,
@@ -551,6 +558,8 @@ struct WorkView: View {
             }
         case "codex":
             codexSection
+        case "tokens":
+            tokenSection
         case "report":
             reportSection
         case "records":
@@ -599,6 +608,9 @@ struct WorkView: View {
                         if manualIssueKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             manualIssueKey = generatedManualIssueKey()
                         }
+                        if manualIssueProject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, selectedIssueProject != "전체" {
+                            manualIssueProject = selectedIssueProject
+                        }
                         isManualIssueCreatePresented = true
                     }
                     panelActionChip(title: "새로고침", systemImage: "arrow.clockwise") {
@@ -609,6 +621,7 @@ struct WorkView: View {
             } content: {
                 HStack(spacing: 10) {
                     briefingMetric(title: "전체 일감", value: "\(issueWorkflows.count)", systemImage: "checklist", tint: .blue, isAttention: false)
+                    briefingMetric(title: "프로젝트", value: "\(issueProjectNames.count)", systemImage: "folder", tint: .purple, isAttention: issueProjectNames.count > 1)
                     briefingMetric(title: "승인 대기", value: "\(approvalWaitingCount)", systemImage: "hand.tap", tint: .orange, isAttention: approvalWaitingCount > 0)
                     briefingMetric(title: "진행 중", value: "\(activeWorkflowCount)", systemImage: "arrow.triangle.branch", tint: .green, isAttention: activeWorkflowCount > 0)
                 }
@@ -628,11 +641,24 @@ struct WorkView: View {
                 EmptyDashboardState(systemImage: "checklist", title: "진행 중인 일감이 없습니다", message: "Jira 일감을 분석하거나 workspace를 만들면 이곳에서 단계별 진행 상태를 볼 수 있습니다.")
             } else {
                 HStack(alignment: .top, spacing: 12) {
-                    DashboardPanel(title: "일감", systemImage: "list.bullet") {
+                    DashboardPanel(title: "프로젝트", systemImage: "folder") {
+                        EmptyView()
+                    } content: {
+                        VStack(alignment: .leading, spacing: 10) {
+                            issueProjectFilterRow("전체", count: issueWorkflows.count)
+                            Divider()
+                            ForEach(issueProjectNames, id: \.self) { project in
+                                issueProjectFilterRow(project, count: issueWorkflows.filter { issueProjectName($0) == project }.count)
+                            }
+                        }
+                    }
+                    .frame(width: 190)
+
+                    DashboardPanel(title: selectedIssueProject == "전체" ? "일감" : "\(selectedIssueProject) 일감", systemImage: "list.bullet") {
                         EmptyView()
                     } content: {
                         VStack(spacing: 8) {
-                            ForEach(issueWorkflows) { item in
+                            ForEach(filteredIssueWorkflows) { item in
                                 issueWorkflowListRow(item)
                             }
                         }
@@ -649,7 +675,18 @@ struct WorkView: View {
     }
 
     private var selectedIssueWorkflow: IssueWorkflowRecord? {
-        issueWorkflows.first { $0.issueKey == selectedIssueWorkflowKey } ?? issueWorkflows.first
+        filteredIssueWorkflows.first { $0.issueKey == selectedIssueWorkflowKey } ?? filteredIssueWorkflows.first
+    }
+
+    private var filteredIssueWorkflows: [IssueWorkflowRecord] {
+        if selectedIssueProject == "전체" {
+            return issueWorkflows
+        }
+        return issueWorkflows.filter { issueProjectName($0) == selectedIssueProject }
+    }
+
+    private var issueProjectNames: [String] {
+        Array(Set(issueWorkflows.map(issueProjectName))).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     private var approvalWaitingCount: Int {
@@ -660,6 +697,44 @@ struct WorkView: View {
         issueWorkflows.filter { !["done", "reported", "merged"].contains($0.status) }.count
     }
 
+    private func issueProjectFilterRow(_ project: String, count: Int) -> some View {
+        Button {
+            selectedIssueProject = project
+            let workflows = project == "전체" ? issueWorkflows : issueWorkflows.filter { issueProjectName($0) == project }
+            selectedIssueWorkflowKey = workflows.first?.issueKey ?? ""
+            if let workflow = workflows.first {
+                selectedIssueFlowStage = nextIssueFlowStage(for: workflow)
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: project == "전체" ? "tray.full" : "folder")
+                    .foregroundStyle(selectedIssueProject == project ? Color.accentColor : Color.secondary)
+                    .frame(width: 18)
+                Text(project)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                Spacer()
+                flowTag("\(count)", tint: selectedIssueProject == project ? .blue : .secondary)
+            }
+            .padding(8)
+            .background(selectedIssueProject == project ? Color.accentColor.opacity(0.15) : Color(nsColor: .controlBackgroundColor).opacity(0.44))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func issueProjectName(_ workflow: IssueWorkflowRecord) -> String {
+        let project = workflow.project.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !project.isEmpty {
+            return project
+        }
+        let key = workflow.issueKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let prefix = key.split(separator: "-").first, prefix != "LOCAL" {
+            return String(prefix)
+        }
+        return "Inbox"
+    }
+
     private func issueWorkflowListRow(_ item: IssueWorkflowRecord) -> some View {
         Button {
             selectedIssueWorkflowKey = item.issueKey
@@ -668,6 +743,7 @@ struct WorkView: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     flowTag(displayIssueKey(item.issueKey), tint: .blue)
+                    flowTag(issueProjectName(item), tint: .purple)
                     Spacer()
                     flowTag(workflowStatusLabel(item.status), tint: workflowStatusTint(item.status))
                 }
@@ -977,6 +1053,127 @@ struct WorkView: View {
                     }
                 }
             }
+        }
+    }
+
+    private var tokenSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            DashboardPanel(title: "토큰 상태", systemImage: "key.horizontal") {
+                HStack(spacing: 6) {
+                    panelActionChip(title: "새로고침", systemImage: "arrow.clockwise") {
+                        Task { await loadTokenStatuses(force: true) }
+                    }
+                    .disabled(isLoadingTokenStatuses)
+                }
+            } content: {
+                HStack(spacing: 10) {
+                    briefingMetric(title: "정상", value: String(tokenStatusCount("ok")), systemImage: "checkmark.seal", tint: .green, isAttention: false)
+                    briefingMetric(title: "확인 필요", value: "\(tokenAttentionCount)", systemImage: "exclamationmark.triangle", tint: .orange, isAttention: tokenAttentionCount > 0)
+                    briefingMetric(title: "누락", value: String(tokenStatusCount("missing")), systemImage: "xmark.octagon", tint: .red, isAttention: tokenStatusCount("missing") > 0)
+                }
+            }
+
+            if isLoadingTokenStatuses {
+                DashboardPanel(title: "조회 중", systemImage: "hourglass") {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("토큰 상태를 불러오는 중입니다.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } else if tokenStatuses.isEmpty {
+                EmptyDashboardState(systemImage: "key.horizontal", title: "토큰 상태가 없습니다", message: "새로고침을 눌러 현재 설정의 토큰 상태를 확인하세요.")
+            } else {
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(minimum: 280), spacing: 12, alignment: .top),
+                        GridItem(.flexible(minimum: 280), spacing: 12, alignment: .top),
+                    ],
+                    alignment: .leading,
+                    spacing: 12
+                ) {
+                    ForEach(tokenStatuses) { item in
+                        tokenStatusCard(item)
+                    }
+                }
+            }
+        }
+    }
+
+    private var tokenAttentionCount: Int {
+        tokenStatuses.filter { ["unknown", "warning", "expired"].contains($0.status) }.count
+    }
+
+    private func tokenStatusCount(_ status: String) -> Int {
+        tokenStatuses.filter { $0.status == status }.count
+    }
+
+    private func tokenStatusCard(_ item: TokenStatusRecord) -> some View {
+        DashboardPanel(title: item.name, systemImage: tokenStatusImage(item.status)) {
+            flowTag(tokenStatusLabel(item.status), tint: tokenStatusTint(item.status))
+        } content: {
+            VStack(alignment: .leading, spacing: 9) {
+                Text(item.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    flowTag(item.configured ? "설정됨" : "누락", tint: item.configured ? .green : .red)
+                    if !item.tokenHint.isEmpty {
+                        flowTag(item.tokenHint, tint: .secondary)
+                    }
+                    Spacer()
+                }
+                Divider()
+                HStack {
+                    Label(item.expiresAt.isEmpty ? "만료일 미등록" : item.expiresAt, systemImage: "calendar")
+                    Spacer()
+                    Text(tokenRemainingText(item))
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                Text(item.source.isEmpty ? "source -" : item.source)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    private func tokenRemainingText(_ item: TokenStatusRecord) -> String {
+        guard let days = item.daysRemaining else {
+            return "-"
+        }
+        return days < 0 ? "\(abs(days))일 지남" : "\(days)일 남음"
+    }
+
+    private func tokenStatusLabel(_ value: String) -> String {
+        switch value {
+        case "ok": return "정상"
+        case "warning": return "만료 임박"
+        case "expired": return "만료"
+        case "missing": return "누락"
+        default: return "확인 필요"
+        }
+    }
+
+    private func tokenStatusTint(_ value: String) -> Color {
+        switch value {
+        case "ok": return .green
+        case "warning", "unknown": return .orange
+        case "expired", "missing": return .red
+        default: return .secondary
+        }
+    }
+
+    private func tokenStatusImage(_ value: String) -> String {
+        switch value {
+        case "ok": return "checkmark.seal"
+        case "warning", "unknown": return "exclamationmark.triangle"
+        case "expired", "missing": return "xmark.octagon"
+        default: return "key.horizontal"
         }
     }
 
@@ -3949,16 +4146,18 @@ struct WorkView: View {
 
     private func createManualIssue() async {
         let key = manualIssueKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? generatedManualIssueKey() : manualIssueKey
+        let project = manualIssueProject.trimmingCharacters(in: .whitespacesAndNewlines)
         let summary = manualIssueSummary.trimmingCharacters(in: .whitespacesAndNewlines)
         let detail = manualIssueDetail.trimmingCharacters(in: .whitespacesAndNewlines)
         let title = manualIssueType.isEmpty ? summary : "[\(manualIssueType)] \(summary)"
         let storedSummary = detail.isEmpty ? title : "\(title) - \(detail)"
-        let result = await runner.registerManualIssue(issue: key, summary: storedSummary)
+        let result = await runner.registerManualIssue(issue: key, project: project, summary: storedSummary)
         lastMessage = result.displayText
         showNotice(title: "직접 일감 등록", message: result.displayText, succeeded: result.succeeded)
         if result.succeeded {
             isManualIssueCreatePresented = false
             manualIssueKey = ""
+            manualIssueProject = ""
             manualIssueSummary = ""
             manualIssueDetail = ""
             manualIssueType = "Task"
@@ -3997,6 +4196,13 @@ struct WorkView: View {
         await loadCodexProjects(force: false)
     }
 
+    private func loadTokenStatusesIfNeeded() async {
+        guard selectedSection == "tokens", tokenStatuses.isEmpty, !isLoadingTokenStatuses else {
+            return
+        }
+        await loadTokenStatuses(force: false)
+    }
+
     private func loadCodexProjects(force: Bool) async {
         guard force || codexProjects.isEmpty else {
             return
@@ -4004,6 +4210,15 @@ struct WorkView: View {
         isLoadingCodexProjects = true
         codexProjects = await runner.loadCodexProjects()
         isLoadingCodexProjects = false
+    }
+
+    private func loadTokenStatuses(force: Bool) async {
+        guard force || tokenStatuses.isEmpty else {
+            return
+        }
+        isLoadingTokenStatuses = true
+        tokenStatuses = await runner.loadTokenStatuses()
+        isLoadingTokenStatuses = false
     }
 
     private func openCodexProject(_ project: CodexProjectRecord) async {
@@ -4042,8 +4257,15 @@ struct WorkView: View {
         }
         isLoadingIssueWorkflows = true
         issueWorkflows = await runner.loadIssueWorkflows()
-        if selectedIssueWorkflowKey.isEmpty {
-            selectedIssueWorkflowKey = issueWorkflows.first?.issueKey ?? ""
+        if selectedIssueProject != "전체", !issueWorkflows.contains(where: { issueProjectName($0) == selectedIssueProject }) {
+            selectedIssueProject = "전체"
+        }
+        let workflows = filteredIssueWorkflows
+        if selectedIssueWorkflowKey.isEmpty || !workflows.contains(where: { $0.issueKey == selectedIssueWorkflowKey }) {
+            selectedIssueWorkflowKey = workflows.first?.issueKey ?? ""
+        }
+        if let workflow = workflows.first(where: { $0.issueKey == selectedIssueWorkflowKey }) {
+            selectedIssueFlowStage = nextIssueFlowStage(for: workflow)
         }
         isLoadingIssueWorkflows = false
     }

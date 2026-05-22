@@ -11,6 +11,43 @@ struct DevPilotCommandResult: Sendable {
     }
 }
 
+struct TokenStatusRecord: Identifiable, Decodable, Hashable, Sendable {
+    let id: String
+    let name: String
+    let configured: Bool
+    let status: String
+    let detail: String
+    let expiresAt: String
+    let daysRemaining: Int?
+    let source: String
+    let tokenHint: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case configured
+        case status
+        case detail
+        case expiresAt = "expires_at"
+        case daysRemaining = "days_remaining"
+        case source
+        case tokenHint = "token_hint"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id) ?? ""
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        configured = try container.decodeIfPresent(Bool.self, forKey: .configured) ?? false
+        status = try container.decodeIfPresent(String.self, forKey: .status) ?? "unknown"
+        detail = try container.decodeIfPresent(String.self, forKey: .detail) ?? ""
+        expiresAt = try container.decodeIfPresent(String.self, forKey: .expiresAt) ?? ""
+        daysRemaining = try container.decodeIfPresent(Int.self, forKey: .daysRemaining)
+        source = try container.decodeIfPresent(String.self, forKey: .source) ?? ""
+        tokenHint = try container.decodeIfPresent(String.self, forKey: .tokenHint) ?? ""
+    }
+}
+
 enum DevPilotProfileKind: String, Sendable {
     case work
     case personal

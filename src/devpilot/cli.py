@@ -65,6 +65,7 @@ from devpilot.features.repo_status import summarize_repositories
 from devpilot.features.report_history import report_history, submit_report_file
 from devpilot.features.remote_repos import clone_remote_repository, format_remote_repositories, list_remote_repositories
 from devpilot.features.scheduler import install_schedules, schedule_status, uninstall_schedules
+from devpilot.features.token_status import token_status
 from devpilot.features.settings_import import import_settings
 from devpilot.features.slack_test import send_test_message
 from devpilot.features.work_notes import add_work_note_file, work_notes
@@ -86,6 +87,7 @@ def build_parser() -> argparse.ArgumentParser:
     issue_start = issue_sub.add_parser("start", help="일감 워크플로우 시작/등록")
     issue_start.add_argument("issue_key", help="일감 키. 예: Jira 키 또는 LOCAL-001")
     issue_start.add_argument("--summary", default="", help="일감 요약")
+    issue_start.add_argument("--project", default="", help="일감을 묶을 프로젝트 이름")
     issue_start.add_argument("--repo", default="", help="연결 repository 경로")
     issue_start.add_argument("--branch", default="", help="이미 준비된 작업 브랜치")
     issue_analyze = issue_sub.add_parser("analyze", help="Jira 일감을 Codex 1차 분석 요청서로 정리")
@@ -405,6 +407,8 @@ def build_parser() -> argparse.ArgumentParser:
     health = status_sub.add_parser("health", help="API 키/토큰과 실제 연결 상태 확인")
     health.add_argument("--no-network", action="store_true", help="네트워크 호출 없이 필수 설정만 확인")
     health.add_argument("--send-alert", action="store_true", help="실패 항목을 Slack alerts 채널로 전송")
+    tokens = status_sub.add_parser("tokens", help="토큰 설정/만료 상태 확인")
+    tokens.add_argument("--format", choices=["text", "json"], default="text", help="출력 형식")
 
     schedule = subparsers.add_parser("schedule", help="OS 스케줄러 등록/제거")
     schedule_sub = schedule.add_subparsers(dest="command", required=True)
@@ -432,7 +436,7 @@ def main(argv: list[str] | None = None) -> int:
     config = load_config(config_path)
 
     if args.area == "issue" and args.command == "start":
-        start_workflow(config, args.issue_key, summary=args.summary, repo_path=args.repo or None, branch=args.branch)
+        start_workflow(config, args.issue_key, summary=args.summary, project=args.project, repo_path=args.repo or None, branch=args.branch)
         print(format_workflow(config, args.issue_key))
         return 0
 
@@ -973,6 +977,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.area == "status" and args.command == "health":
         print(run_health(config, check_connections=not args.no_network, send_alert=args.send_alert))
+        return 0
+
+    if args.area == "status" and args.command == "tokens":
+        print(token_status(config, output_format=args.format))
         return 0
 
     if args.area == "schedule" and args.command == "install":

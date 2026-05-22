@@ -257,6 +257,7 @@ struct JiraQuickCreateSheet: View {
 
 struct ManualIssueCreateSheet: View {
     @Binding var issueKey: String
+    @Binding var project: String
     @Binding var summary: String
     @Binding var detail: String
     @Binding var issueType: String
@@ -280,7 +281,7 @@ struct ManualIssueCreateSheet: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("직접 일감 등록")
                         .font(.title3.weight(.semibold))
-                    Text("Jira 없이도 같은 분석, workspace, 테스트, 보고 흐름으로 처리합니다.")
+                    Text("프로젝트 아래에 일감을 만들고 같은 분석, workspace, 테스트, 보고 흐름으로 처리합니다.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -297,6 +298,9 @@ struct ManualIssueCreateSheet: View {
                         Label("키 생성", systemImage: "wand.and.stars")
                     }
                 }
+
+                TextField("프로젝트 이름 또는 코드", text: $project)
+                    .textFieldStyle(.roundedBorder)
 
                 HStack(spacing: 10) {
                     Picker("종류", selection: $issueType) {

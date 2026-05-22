@@ -373,9 +373,8 @@ final class DevPilotRunner: NSObject, ObservableObject, NSWindowDelegate {
     func openWorkWindow() {
         NSApplication.shared.setActivationPolicy(.regular)
         if let workWindow {
-            workWindow.level = .floating
+            workWindow.level = .normal
             workWindow.makeKeyAndOrderFront(nil)
-            workWindow.orderFrontRegardless()
             NSApplication.shared.activate(ignoringOtherApps: true)
             return
         }
@@ -388,13 +387,12 @@ final class DevPilotRunner: NSObject, ObservableObject, NSWindowDelegate {
         )
         window.title = "DevPilot 작업 콘솔"
         window.center()
-        window.level = .floating
+        window.level = .normal
         window.contentView = NSHostingView(rootView: WorkView(runner: self))
         window.isReleasedWhenClosed = false
         window.delegate = self
         workWindow = window
         window.makeKeyAndOrderFront(nil)
-        window.orderFrontRegardless()
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
 
@@ -770,14 +768,19 @@ final class DevPilotRunner: NSObject, ObservableObject, NSWindowDelegate {
         return DevPilotCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
     }
 
-    func registerManualIssue(issue: String, summary: String) async -> DevPilotCommandResult {
+    func registerManualIssue(issue: String, project: String, summary: String) async -> DevPilotCommandResult {
         let normalizedIssue = issue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedProject = project.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedSummary = summary.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedIssue.isEmpty, !normalizedSummary.isEmpty else {
             return DevPilotCommandResult(succeeded: false, output: "", summary: "일감 키와 제목을 입력해 주세요.")
         }
+        var arguments = ["issue", "start", normalizedIssue, "--summary", normalizedSummary]
+        if !normalizedProject.isEmpty {
+            arguments.append(contentsOf: ["--project", normalizedProject])
+        }
         let result = await runDashboardCommand(
-            ["issue", "start", normalizedIssue, "--summary", normalizedSummary],
+            arguments,
             runningStatus: "\(normalizedIssue) 일감 등록 중...",
             successStatus: "\(normalizedIssue) 일감 등록 완료",
             failureStatus: "\(normalizedIssue) 일감 등록 실패"
@@ -906,6 +909,7 @@ final class DevPilotRunner: NSObject, ObservableObject, NSWindowDelegate {
         return raw.map { key, value in
             IssueWorkflowRecord(
                 issueKey: value.issueKey.isEmpty ? key : value.issueKey,
+                project: value.project,
                 summary: value.summary,
                 status: value.status,
                 updatedAt: value.updatedAt,
@@ -918,6 +922,18 @@ final class DevPilotRunner: NSObject, ObservableObject, NSWindowDelegate {
             )
         }
         .sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    func loadTokenStatuses() async -> [TokenStatusRecord] {
+        let result = await Self.executeDetached(["status", "tokens", "--format", "json"])
+        lastOutput = result.output
+        guard result.succeeded, let data = result.output.data(using: .utf8),
+              let rows = try? JSONDecoder().decode([TokenStatusRecord].self, from: data) else {
+            status = "토큰 상태 조회 실패"
+            return []
+        }
+        status = "토큰 상태를 불러왔습니다"
+        return rows
     }
 
     func loadTodayCommits(path: String) async -> String {

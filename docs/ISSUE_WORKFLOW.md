@@ -51,6 +51,7 @@ devpilot issue analyze LMS-123 --codex-thread
 devpilot jira watch-new --analyze
 devpilot jira watch-new --analyze --codex-thread
 devpilot issue start LMS-123 --summary "입고 수량 검증 오류 수정"
+devpilot issue start LOCAL-20260522-001 --project WMS --summary "운영 요청 정리"
 devpilot issue workspace prepare LMS-123 --repo ~/work/cms-back --repo ~/work/cms-front --summary "입고 수량 검증 오류 수정" --prefix fix
 devpilot issue workspace status LMS-123
 devpilot dev start-issue LMS-123 --repo ~/work/service --summary "입고 수량 검증 오류 수정" --prefix fix
@@ -62,6 +63,8 @@ devpilot issue workspace cleanup LMS-123
 devpilot issue morning
 devpilot issue evening
 ```
+
+`issue start`의 `--project`는 Jira 없이 직접 등록한 일감도 프로젝트 하위로 묶기 위한 값이다. 값이 없으면 Jira 키 접두어를 프로젝트처럼 보여주고, `LOCAL-*` 일감은 `Inbox`로 분류한다.
 
 ## 일감 Workspace
 

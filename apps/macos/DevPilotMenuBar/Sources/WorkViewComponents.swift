@@ -96,6 +96,16 @@ struct WorkSidebarView: View {
                 }
 
                 WorkSidebarButton(
+                    title: "토큰",
+                    systemImage: "key.horizontal",
+                    detail: nil,
+                    isSelected: selectedSection == "tokens",
+                    isCollapsed: isCollapsed
+                ) {
+                    selectedSection = "tokens"
+                }
+
+                WorkSidebarButton(
                     title: "보고서",
                     systemImage: "doc.text",
                     detail: reportReady ? "작성됨" : nil,

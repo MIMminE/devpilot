@@ -58,6 +58,7 @@ def start_workflow(
     issue_key: str,
     *,
     summary: str = "",
+    project: str = "",
     repo_path: str | None = None,
     branch: str = "",
     status: str = "assigned",
@@ -68,6 +69,7 @@ def start_workflow(
     workflows = _workflow_map(state)
     workflow = _ensure_workflow(workflows, key, summary=summary, now=now)
     workflow["summary"] = summary.strip() or workflow.get("summary", "")
+    workflow["project"] = _project_name(project, key, workflow)
     workflow["status"] = _advance_status(str(workflow.get("status") or "assigned"), status)
     workflow["updated_at"] = now
     if repo_path:
@@ -294,6 +296,7 @@ def get_workflow(issue_key: str) -> dict | None:
 def _format_workflow_detail(config: AppConfig, key: str, workflow: dict) -> str:
     lines = [
         f"{key} 일감 워크플로우",
+        f"- 프로젝트: {_project_name('', key, workflow)}",
         f"- 요약: {workflow.get('summary') or '-'}",
         f"- 상태: {_status_label(str(workflow.get('status') or 'assigned'))}",
         f"- 진행도: {_progress_label(workflow)}",
@@ -345,7 +348,7 @@ def _format_workflow_summary(config: AppConfig, key: str, workflow: dict) -> str
     repo_states = _repo_states(config, workflow)
     repo_hint = ", ".join(f"{item.repo_name}:{item.branch}" for item in repo_states[:3]) or "-"
     return (
-        f"- {key} [{_status_label(str(workflow.get('status') or 'assigned'))}] "
+        f"- {_project_name('', key, workflow)} / {key} [{_status_label(str(workflow.get('status') or 'assigned'))}] "
         f"{workflow.get('summary') or '-'} | 진행도 {_progress_label(workflow)} | {repo_hint}"
     )
 
@@ -353,7 +356,7 @@ def _format_workflow_summary(config: AppConfig, key: str, workflow: dict) -> str
 def _format_routine_item(config: AppConfig, key: str, workflow: dict, *, morning: bool) -> str:
     repo_states = _repo_states(config, workflow)
     status = str(workflow.get("status") or "assigned")
-    lines = [f"- {key} [{_status_label(status)}] {workflow.get('summary') or '-'}"]
+    lines = [f"- {_project_name('', key, workflow)} / {key} [{_status_label(status)}] {workflow.get('summary') or '-'}"]
     lines.append(f"  - 진행도: {_progress_label(workflow)}")
     for item in repo_states[:2]:
         dirty = f", 변경 {item.dirty_count}개" if item.dirty_count else ""
@@ -421,6 +424,7 @@ def _ensure_workflow(workflows: dict[str, dict], key: str, *, summary: str, now:
         workflow = {
             "issue_key": key,
             "summary": summary.strip(),
+            "project": _project_name("", key, {}),
             "status": "assigned",
             "created_at": now,
             "updated_at": now,
@@ -433,7 +437,22 @@ def _ensure_workflow(workflows: dict[str, dict], key: str, *, summary: str, now:
         }
         workflows[key] = workflow
     _hydrate_linked_repositories(key, workflow)
+    workflow["project"] = _project_name("", key, workflow)
     return workflow
+
+
+def _project_name(project: str, key: str, workflow: dict) -> str:
+    explicit = project.strip()
+    if explicit:
+        return explicit
+    existing = str(workflow.get("project") or "").strip()
+    if existing:
+        return existing
+    if "-" in key:
+        prefix = key.split("-", 1)[0].strip()
+        if prefix and prefix != "LOCAL":
+            return prefix
+    return "Inbox"
 
 
 def _hydrate_linked_repositories(key: str, workflow: dict) -> None:

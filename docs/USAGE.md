@@ -156,6 +156,8 @@ snapshots/
 
 ```bash
 scripts/run-devpilot.sh status doctor
+scripts/run-devpilot.sh status tokens
+scripts/run-devpilot.sh status tokens --format json
 scripts/run-devpilot.sh status health --no-network
 scripts/run-devpilot.sh status health --send-alert
 scripts/run-devpilot.sh slack test

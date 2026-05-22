@@ -120,6 +120,7 @@ struct IssueWorkStateBadge: View {
 
 struct IssueWorkflowRecord: Identifiable, Decodable, Hashable {
     let issueKey: String
+    let project: String
     let summary: String
     let status: String
     let updatedAt: String
@@ -134,6 +135,7 @@ struct IssueWorkflowRecord: Identifiable, Decodable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case issueKey = "issue_key"
+        case project
         case summary
         case status
         case updatedAt = "updated_at"
@@ -147,6 +149,7 @@ struct IssueWorkflowRecord: Identifiable, Decodable, Hashable {
 
     init(
         issueKey: String,
+        project: String,
         summary: String,
         status: String,
         updatedAt: String,
@@ -158,6 +161,7 @@ struct IssueWorkflowRecord: Identifiable, Decodable, Hashable {
         blockers: [String]
     ) {
         self.issueKey = issueKey
+        self.project = project
         self.summary = summary
         self.status = status
         self.updatedAt = updatedAt
@@ -173,6 +177,7 @@ struct IssueWorkflowRecord: Identifiable, Decodable, Hashable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
             issueKey: try container.decodeIfPresent(String.self, forKey: .issueKey) ?? "",
+            project: try container.decodeIfPresent(String.self, forKey: .project) ?? "",
             summary: try container.decodeIfPresent(String.self, forKey: .summary) ?? "",
             status: try container.decodeIfPresent(String.self, forKey: .status) ?? "assigned",
             updatedAt: try container.decodeIfPresent(String.self, forKey: .updatedAt) ?? "",
