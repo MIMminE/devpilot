@@ -39,6 +39,7 @@ struct WorkView: View {
     @State private var issueRepositoryLinks: [IssueRepositoryLinkRecord] = []
     @State private var issueWorkflows: [IssueWorkflowRecord] = []
     @State private var selectedIssueWorkflowKey = ""
+    @State private var selectedIssueFlowStage = IssueFlowStage.analysis
     @State private var isLoadingIssueWorkflows = false
     @State private var hasAutoLoadedJiraMorningItems = false
     @State private var hasPreloadedBriefingData = false
@@ -633,6 +634,7 @@ struct WorkView: View {
     private func issueWorkflowListRow(_ item: IssueWorkflowRecord) -> some View {
         Button {
             selectedIssueWorkflowKey = item.issueKey
+            selectedIssueFlowStage = nextIssueFlowStage(for: item)
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
@@ -692,71 +694,176 @@ struct WorkView: View {
         VStack(spacing: 8) {
             ForEach(IssueFlowStage.allCases, id: \.self) { stage in
                 let state = workflowStageState(workflow, stage: stage)
-                HStack(spacing: 10) {
-                    Image(systemName: state.systemImage)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(state.tint)
-                        .frame(width: 24)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(stage.title)
-                            .font(.caption.weight(.semibold))
-                        Text(stage.subtitle)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                VStack(spacing: 6) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.16)) {
+                            selectedIssueFlowStage = stage
+                        }
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: state.systemImage)
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(state.tint)
+                                .frame(width: 24)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(stage.title)
+                                    .font(.caption.weight(.semibold))
+                                Text(workflowStageDetail(workflow, stage: stage))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer()
+                            flowTag(state.label, tint: state.tint)
+                            Image(systemName: selectedIssueFlowStage == stage ? "chevron.up" : "chevron.down")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(9)
+                        .background(selectedIssueFlowStage == stage ? state.tint.opacity(0.16) : state.tint.opacity(0.08))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(selectedIssueFlowStage == stage ? state.tint.opacity(0.46) : Color.clear, lineWidth: 1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
-                    Spacer()
-                    flowTag(state.label, tint: state.tint)
+                    .buttonStyle(.plain)
+
+                    if selectedIssueFlowStage == stage {
+                        issueStageSummaryPanel(workflow, stage: stage)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
                 }
-                .padding(9)
-                .background(state.tint.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
     }
 
-    private func issueApprovalPanel(_ workflow: IssueWorkflowRecord) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("현재 승인 지점", systemImage: "hand.tap")
+    private func issueStageSummaryPanel(_ workflow: IssueWorkflowRecord, stage: IssueFlowStage) -> some View {
+        let state = workflowStageState(workflow, stage: stage)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: state.systemImage)
+                    .foregroundStyle(state.tint)
+                Text(stage.title)
                     .font(.subheadline.weight(.semibold))
                 Spacer()
-                flowTag(workflow.status, tint: workflowStatusTint(workflow.status))
+                flowTag(state.label, tint: state.tint)
             }
 
-            Text(currentApprovalSummary(workflow))
+            Text(workflowStageDetail(workflow, stage: stage))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            let artifacts = workflowStageArtifacts(workflow, stage: stage)
+            if !artifacts.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(artifacts.prefix(4), id: \.self) { item in
+                        Label(item, systemImage: "smallcircle.filled.circle")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+
             HStack(spacing: 8) {
-                if workflow.analysis == nil {
-                    Button {
-                        Task { await analyzeWorkflowIssue(workflow) }
-                    } label: {
-                        Label("AI 분석 승인", systemImage: "sparkles")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(runner.isRunning)
-                }
+                Spacer()
+                workflowStageActionButtons(workflow, stage: stage)
+            }
+        }
+        .padding(10)
+        .background(Color(nsColor: .textBackgroundColor).opacity(0.62))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(state.tint.opacity(0.18), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
 
-                if workflow.analysis != nil && !workflow.repositories.contains(where: \.isWorkspaceRepo) {
-                    Button {
-                        Task { await prepareWorkflowWorkspace(workflow) }
-                    } label: {
-                        Label("workspace 생성 승인", systemImage: "folder.badge.plus")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(runner.isRunning || workflow.repositories.isEmpty)
+    @ViewBuilder
+    private func workflowStageActionButtons(_ workflow: IssueWorkflowRecord, stage: IssueFlowStage) -> some View {
+        switch stage {
+        case .intake:
+            Button {
+                Task {
+                    await runDashboardCommand(
+                        ["issue", "show", workflow.issueKey],
+                        title: "\(workflow.issueKey) 상세",
+                        running: "일감 상세를 불러오는 중...",
+                        success: "일감 상세 조회 완료",
+                        failure: "일감 상세 조회 실패"
+                    )
                 }
-
-                Button {
-                    Task { await markWorkflowImplemented(workflow) }
-                } label: {
-                    Label("구현 완료 표시", systemImage: "checkmark.seal")
+            } label: {
+                Label("상세 보기", systemImage: "doc.text.magnifyingglass")
+            }
+        case .analysis:
+            Button {
+                Task { await analyzeWorkflowIssue(workflow) }
+            } label: {
+                Label(workflow.analysis == nil ? "AI 분석 승인" : "AI 분석 다시 요청", systemImage: "sparkles")
+            }
+            .disabled(runner.isRunning)
+        case .repo:
+            Button {
+                runner.openIssueRepositoryLinkWindow(issue: workflow.issueKey, summary: workflow.summary)
+            } label: {
+                Label("repository 확정", systemImage: "folder.badge.plus")
+            }
+        case .workspace:
+            Button {
+                Task { await prepareWorkflowWorkspace(workflow) }
+            } label: {
+                Label("workspace 생성 승인", systemImage: "folder.badge.gearshape")
+            }
+            .disabled(runner.isRunning || workflow.repositories.isEmpty || workflow.repositories.contains(where: \.isWorkspaceRepo))
+        case .implementation:
+            Button {
+                Task { await markWorkflowImplemented(workflow) }
+            } label: {
+                Label("구현 완료 표시", systemImage: "checkmark.seal")
+            }
+            .disabled(runner.isRunning)
+        case .test:
+            Button {
+                Task {
+                    await runDashboardCommand(
+                        ["issue", "show", workflow.issueKey],
+                        title: "\(workflow.issueKey) 테스트 상태",
+                        running: "테스트 기록을 불러오는 중...",
+                        success: "테스트 기록 조회 완료",
+                        failure: "테스트 기록 조회 실패"
+                    )
                 }
-                .disabled(runner.isRunning)
+            } label: {
+                Label("테스트 기록 확인", systemImage: "checklist.checked")
+            }
+        case .report:
+            Button {
+                Task {
+                    await runDashboardCommand(
+                        ["issue", "report", workflow.issueKey],
+                        title: "\(workflow.issueKey) 보고",
+                        running: "보고서를 생성하는 중...",
+                        success: "보고서 생성 완료",
+                        failure: "보고서 생성 실패"
+                    )
+                }
+            } label: {
+                Label("보고서 생성", systemImage: "doc.badge.plus")
+            }
+            .disabled(runner.isRunning)
+        }
+    }
 
+    private func issueApprovalPanel(_ workflow: IssueWorkflowRecord) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack {
+                Label("현재 흐름 요약", systemImage: "point.3.connected.trianglepath.dotted")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                flowTag(workflow.status, tint: workflowStatusTint(workflow.status))
                 Button {
                     Task { await loadIssueWorkflows(force: true) }
                 } label: {
@@ -764,6 +871,11 @@ struct WorkView: View {
                 }
                 .buttonStyle(.borderless)
             }
+
+            Text(nextWorkflowAction(workflow))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             if !workflow.repositories.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
@@ -3997,6 +4109,110 @@ struct WorkView: View {
             return "아래 repository들로 Jira 키가 포함된 작업 브랜치와 worktree workspace를 생성할 수 있습니다."
         }
         return "workspace가 준비되었습니다. Codex와 구현을 진행하고 단계별로 테스트/보고를 승인하세요."
+    }
+
+    private func nextIssueFlowStage(for workflow: IssueWorkflowRecord) -> IssueFlowStage {
+        if workflow.analysis == nil {
+            return .analysis
+        }
+        if workflow.repositories.isEmpty {
+            return .repo
+        }
+        if !workflow.repositories.contains(where: \.isWorkspaceRepo) {
+            return .workspace
+        }
+        if !["implemented", "tested", "reported", "done", "merged"].contains(workflow.status) {
+            return .implementation
+        }
+        if workflow.tests.isEmpty {
+            return .test
+        }
+        if workflow.reports.isEmpty {
+            return .report
+        }
+        return .report
+    }
+
+    private func workflowStageDetail(_ workflow: IssueWorkflowRecord, stage: IssueFlowStage) -> String {
+        switch stage {
+        case .intake:
+            return workflow.updatedAt.isEmpty ? "워크플로우에 등록되어 대기 중입니다." : "마지막 갱신 \(workflow.updatedAt)"
+        case .analysis:
+            if let analysis = workflow.analysis {
+                return analysis.threadName.isEmpty ? "AI 분석 스레드가 생성되었습니다." : "Codex 스레드: \(analysis.threadName)"
+            }
+            return "일감 유형, As-Is/To-Be, 변경 후보 repository 분석 승인이 필요합니다."
+        case .repo:
+            if workflow.repositories.isEmpty {
+                return "아직 확정된 repository가 없습니다."
+            }
+            return "\(workflow.repositories.count)개 repository가 연결되었습니다."
+        case .workspace:
+            let workspaceCount = workflow.repositories.filter(\.isWorkspaceRepo).count
+            if workspaceCount > 0 {
+                return "\(workspaceCount)개 worktree workspace가 준비되었습니다."
+            }
+            if workflow.repositories.isEmpty {
+                return "repository 확정 이후 workspace를 만들 수 있습니다."
+            }
+            return "Jira 키가 포함된 브랜치와 worktree 생성을 승인할 수 있습니다."
+        case .implementation:
+            if ["implemented", "tested", "reported", "done", "merged"].contains(workflow.status) {
+                return "구현 완료로 표시되었습니다."
+            }
+            if workflow.repositories.contains(where: \.isWorkspaceRepo) {
+                return "준비된 workspace에서 Codex와 실제 변경 작업을 진행할 수 있습니다."
+            }
+            return "workspace 준비 이후 구현 단계로 넘어갑니다."
+        case .test:
+            if let latest = workflow.tests.last {
+                return latest.summary.isEmpty ? "\(latest.command) 결과: \(latest.result)" : latest.summary
+            }
+            return "구현 완료 이후 테스트 실행 결과를 기록합니다."
+        case .report:
+            if let latest = workflow.reports.last {
+                return latest.summary.isEmpty ? "보고가 등록되었습니다." : latest.summary
+            }
+            return "테스트 결과를 바탕으로 오늘 한 일과 작업 보고를 등록합니다."
+        }
+    }
+
+    private func workflowStageArtifacts(_ workflow: IssueWorkflowRecord, stage: IssueFlowStage) -> [String] {
+        switch stage {
+        case .intake:
+            return [
+                workflow.summary.isEmpty ? "제목 없음" : privacyText(workflow.summary, fallback: "샘플 일감 제목"),
+                workflow.status.isEmpty ? "상태 -" : "상태 \(workflowStatusLabel(workflow.status))",
+            ]
+        case .analysis:
+            guard let analysis = workflow.analysis else {
+                return workflow.nextActions.isEmpty ? [] : workflow.nextActions
+            }
+            return [
+                analysis.threadName.isEmpty ? "Codex 분석 스레드 생성됨" : analysis.threadName,
+                analysis.promptPath.isEmpty ? "" : "프롬프트 \(analysis.promptPath)",
+                analysis.responsePath.isEmpty ? "" : "응답 \(analysis.responsePath)",
+            ].filter { !$0.isEmpty }
+        case .repo:
+            return workflow.repositories.map { repo in
+                repo.branch.isEmpty ? repo.repoName : "\(repo.repoName) · \(repo.branch)"
+            }
+        case .workspace:
+            return workflow.repositories.filter(\.isWorkspaceRepo).map { repo in
+                repo.branch.isEmpty ? repo.repoPath : "\(repo.repoName) · \(repo.branch)"
+            }
+        case .implementation:
+            return workflow.blockers.isEmpty ? workflow.nextActions : workflow.blockers.map { "막힘: \($0)" }
+        case .test:
+            return workflow.tests.map { test in
+                let result = test.result.isEmpty ? "결과 -" : test.result
+                return test.command.isEmpty ? result : "\(test.command) · \(result)"
+            }
+        case .report:
+            return workflow.reports.map { report in
+                report.recordedAt.isEmpty ? report.summary : "\(report.recordedAt) · \(report.summary)"
+            }
+        }
     }
 
     private func workflowStatusLabel(_ value: String) -> String {
