@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 import json
 import select
@@ -16,6 +17,24 @@ class CodexThreadResult:
     thread_path: str
     cwd: str
     response: str
+
+
+@dataclass(frozen=True)
+class CodexThreadSummary:
+    thread_id: str
+    name: str
+    cwd: str
+    path: str
+    source: str
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class CodexProjectSummary:
+    project_name: str
+    cwd: str
+    threads: list[CodexThreadSummary]
 
 
 def create_codex_thread(
@@ -95,6 +114,36 @@ def create_codex_thread(
                 process.kill()
 
 
+def list_codex_projects(*, timeout_seconds: int = 20) -> list[CodexProjectSummary]:
+    codex = _codex_executable()
+    started_at = time.monotonic()
+    process = subprocess.Popen(
+        [str(codex), "app-server", "--listen", "stdio://"],
+        cwd=str(Path.home()),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+    )
+    try:
+        _send(process, 1, "initialize", {"clientInfo": {"name": "devpilot", "version": "0.1.0"}, "capabilities": {"experimentalApi": True}})
+        _read_until_response(process, 1, started_at=started_at, timeout_seconds=timeout_seconds)
+        _send(process, 2, "thread/list", {})
+        response, _ = _read_until_response(process, 2, started_at=started_at, timeout_seconds=timeout_seconds)
+        threads = [_thread_summary(item) for item in _thread_items(response)]
+        return _group_projects([item for item in threads if item.thread_id])
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+
+
 def _codex_executable() -> Path:
     candidate = shutil.which("codex")
     if candidate:
@@ -103,6 +152,79 @@ def _codex_executable() -> Path:
     if bundled.is_file():
         return bundled
     raise RuntimeError("Codex CLI를 찾지 못했습니다.")
+
+
+def _thread_items(response: dict) -> list[dict]:
+    result = response.get("result")
+    if isinstance(result, list):
+        return [item for item in result if isinstance(item, dict)]
+    if not isinstance(result, dict):
+        return []
+    for key in ("data", "threads", "items", "entries"):
+        value = result.get(key)
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+    return []
+
+
+def _thread_summary(item: dict) -> CodexThreadSummary:
+    thread = item.get("thread") if isinstance(item.get("thread"), dict) else item
+    metadata = thread.get("metadata") if isinstance(thread.get("metadata"), dict) else {}
+    cwd = _first_text(thread, metadata, keys=("cwd", "workspace", "workspacePath", "projectPath"))
+    path = _first_text(thread, metadata, keys=("path", "sessionPath", "threadPath"))
+    name = _first_text(thread, metadata, keys=("name", "title", "displayName"))
+    source = _first_text(thread, metadata, keys=("source", "threadSource", "sessionStartSource"))
+    created_at = _first_text(thread, metadata, keys=("createdAt", "created_at", "created"))
+    updated_at = _first_text(thread, metadata, keys=("updatedAt", "updated_at", "updated", "lastActivityAt"))
+    thread_id = _first_text(thread, metadata, keys=("id", "threadId", "sessionId"))
+    return CodexThreadSummary(
+        thread_id=thread_id,
+        name=name or "(제목 없음)",
+        cwd=cwd,
+        path=path,
+        source=source,
+        created_at=created_at,
+        updated_at=updated_at,
+    )
+
+
+def _first_text(*values: dict, keys: tuple[str, ...]) -> str:
+    for value in values:
+        for key in keys:
+            item = value.get(key)
+            if item is not None:
+                if key.lower().endswith("at") or key in {"created", "updated"}:
+                    return _timestamp_text(item)
+                return str(item)
+    return ""
+
+
+def _timestamp_text(value: object) -> str:
+    if isinstance(value, (int, float)):
+        return datetime.fromtimestamp(value, timezone.utc).astimezone().isoformat(timespec="minutes")
+    return str(value)
+
+
+def _group_projects(threads: list[CodexThreadSummary]) -> list[CodexProjectSummary]:
+    grouped: dict[str, list[CodexThreadSummary]] = {}
+    for thread in threads:
+        key = thread.cwd or "(프로젝트 없음)"
+        grouped.setdefault(key, []).append(thread)
+    projects = [
+        CodexProjectSummary(project_name=_project_name(cwd), cwd=cwd, threads=_sort_threads(items))
+        for cwd, items in grouped.items()
+    ]
+    return sorted(projects, key=lambda item: item.project_name.lower())
+
+
+def _sort_threads(threads: list[CodexThreadSummary]) -> list[CodexThreadSummary]:
+    return sorted(threads, key=lambda item: item.updated_at or item.created_at or item.name, reverse=True)
+
+
+def _project_name(cwd: str) -> str:
+    if not cwd or cwd == "(프로젝트 없음)":
+        return "프로젝트 없음"
+    return Path(cwd).name or cwd
 
 
 def _send(process: subprocess.Popen[str], request_id: int, method: str, params: dict) -> None:

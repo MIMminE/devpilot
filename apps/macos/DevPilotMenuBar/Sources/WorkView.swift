@@ -53,6 +53,8 @@ struct WorkView: View {
     @State private var selectedReportID = ""
     @State private var workMemos: [WorkMemoRecord] = []
     @State private var codexHealth = CodexHealthStatus.unknown
+    @State private var codexProjects: [CodexProjectRecord] = []
+    @State private var isLoadingCodexProjects = false
     @State private var selectedWorkIssueKey = ""
     @State private var selectedIssueDetail = JiraIssueDetailRecord.empty
     @State private var isLoadingIssueDetail = false
@@ -399,6 +401,7 @@ struct WorkView: View {
         }
         .task(id: selectedSection) {
             await autoLoadJiraMorningItemsIfNeeded()
+            await loadCodexProjectsIfNeeded()
         }
         .onChange(of: runner.activeProfileID) { _ in
             reportDraft = ""
@@ -516,6 +519,8 @@ struct WorkView: View {
                 repositoryActions
                 repositorySection
             }
+        case "codex":
+            codexSection
         case "report":
             reportSection
         case "records":
@@ -554,6 +559,122 @@ struct WorkView: View {
             myJiraDashboardPanel
             commandCenter
         }
+    }
+
+    private var codexSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            DashboardPanel(title: "Codex 프로젝트와 스레드", systemImage: "sparkles.rectangle.stack") {
+                HStack(spacing: 6) {
+                    panelActionChip(title: "새로고침", systemImage: "arrow.clockwise") {
+                        Task { await loadCodexProjects(force: true) }
+                    }
+                    .disabled(isLoadingCodexProjects)
+                }
+            } content: {
+                HStack(spacing: 10) {
+                    briefingMetric(title: "프로젝트", value: "\(codexProjects.count)", systemImage: "folder", tint: .blue, isAttention: false)
+                    briefingMetric(title: "스레드", value: "\(codexProjects.reduce(0) { $0 + $1.threads.count })", systemImage: "bubble.left.and.text.bubble.right", tint: .green, isAttention: false)
+                    briefingMetric(title: "DevPilot 연동", value: "\(devPilotCodexThreadCount)", systemImage: "link", tint: .purple, isAttention: devPilotCodexThreadCount > 0)
+                }
+            }
+
+            if isLoadingCodexProjects {
+                DashboardPanel(title: "조회 중", systemImage: "hourglass") {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Codex app-server에서 스레드 목록을 불러오는 중입니다.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } else if codexProjects.isEmpty {
+                EmptyDashboardState(systemImage: "sparkles", title: "Codex 스레드가 없습니다", message: "Jira 일감 분석 스레드를 만들면 이곳에 프로젝트별로 표시됩니다.")
+            } else {
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(minimum: 360), spacing: 12, alignment: .top),
+                        GridItem(.flexible(minimum: 360), spacing: 12, alignment: .top),
+                    ],
+                    alignment: .leading,
+                    spacing: 12
+                ) {
+                    ForEach(codexProjects) { project in
+                        codexProjectCard(project)
+                    }
+                }
+            }
+        }
+    }
+
+    private var devPilotCodexThreadCount: Int {
+        codexProjects.reduce(0) { total, project in
+            total + project.threads.filter { $0.name.hasPrefix("[") || $0.cwd.contains("DevPilot/codex-workspaces") }.count
+        }
+    }
+
+    private func codexProjectCard(_ project: CodexProjectRecord) -> some View {
+        DashboardPanel(title: project.projectName, systemImage: "folder") {
+            HStack(spacing: 6) {
+                panelActionChip(title: "열기", systemImage: "arrow.up.forward.app") {
+                    Task { await openCodexProject(project) }
+                }
+                .disabled(project.cwd.isEmpty || project.cwd == "(프로젝트 없음)")
+            }
+        } content: {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(project.cwd)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .textSelection(.enabled)
+
+                ForEach(project.threads.prefix(8)) { thread in
+                    codexThreadRow(thread)
+                }
+            }
+        }
+    }
+
+    private func codexThreadRow(_ thread: CodexThreadRecord) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: thread.name.hasPrefix("[") ? "tag.fill" : "bubble.left.and.text.bubble.right")
+                    .foregroundStyle(thread.name.hasPrefix("[") ? Color.purple : Color.accentColor)
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(thread.name)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(2)
+                    Text(thread.threadID)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .textSelection(.enabled)
+                }
+                Spacer(minLength: 6)
+                Button {
+                    copyCodexThreadID(thread.threadID)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .frame(width: 22, height: 20)
+                }
+                .buttonStyle(.borderless)
+                .help("스레드 ID 복사")
+            }
+
+            HStack(spacing: 6) {
+                if !thread.updatedAt.isEmpty {
+                    flowTag(compactCodexDate(thread.updatedAt), tint: .green)
+                }
+                if !thread.source.isEmpty {
+                    flowTag(thread.source, tint: .blue)
+                }
+            }
+        }
+        .padding(9)
+        .background(Color(nsColor: .textBackgroundColor).opacity(0.48))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private var dashboardSection: some View {
@@ -3467,6 +3588,45 @@ struct WorkView: View {
         }
         hasAutoLoadedJiraMorningItems = true
         await loadJiraMorningItems(notifyLocal: false, showFailureNotice: false)
+    }
+
+    private func loadCodexProjectsIfNeeded() async {
+        guard selectedSection == "codex", codexProjects.isEmpty, !isLoadingCodexProjects else {
+            return
+        }
+        await loadCodexProjects(force: false)
+    }
+
+    private func loadCodexProjects(force: Bool) async {
+        guard force || codexProjects.isEmpty else {
+            return
+        }
+        isLoadingCodexProjects = true
+        codexProjects = await runner.loadCodexProjects()
+        isLoadingCodexProjects = false
+    }
+
+    private func openCodexProject(_ project: CodexProjectRecord) async {
+        let result = await runner.openCodexProject(cwd: project.cwd)
+        lastMessage = result.displayText
+        if !result.succeeded {
+            showNotice(title: "Codex 프로젝트 열기", message: result.displayText, succeeded: false)
+        }
+    }
+
+    private func copyCodexThreadID(_ value: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(value, forType: .string)
+        lastMessage = "Codex 스레드 ID를 복사했습니다."
+    }
+
+    private func compactCodexDate(_ value: String) -> String {
+        if value.count >= 16 {
+            let start = value.index(value.startIndex, offsetBy: 5)
+            let end = value.index(value.startIndex, offsetBy: 16)
+            return String(value[start..<end]).replacingOccurrences(of: "T", with: " ")
+        }
+        return value
     }
 
     private func loadJiraMorningItems(notifyLocal: Bool) async {

@@ -13,6 +13,7 @@ from devpilot.config import load_config
 from devpilot.features.ai_assistant import daily_commit_report, git_summary, incident_draft, jira_issue_summary, monthly_review, pr_description
 from devpilot.features.assignees import list_assignees
 from devpilot.features.automation import tick
+from devpilot.features.codex_threads import format_codex_threads
 from devpilot.features.daily_activity import collect_daily_activity, draft_daily_work_report, summarize_daily_activity
 from devpilot.features.dev_assistant import audit_jira_keys, branch_name, calendar_summary, commit_message, create_branch, dashboard, evening_check, morning_briefing, pr_draft
 from devpilot.features.dev_insights import (
@@ -167,6 +168,11 @@ def build_parser() -> argparse.ArgumentParser:
     jira_flow.add_argument("--days", type=int, default=7, help="조회 기간")
     jira_flow.add_argument("--max-results", type=int, default=80, help="최대 조회 개수")
     jira_flow.add_argument("--format", choices=["text", "tsv"], default="text", help="출력 형식")
+
+    codex = subparsers.add_parser("codex", help="Codex 프로젝트/스레드 조회")
+    codex_sub = codex.add_subparsers(dest="command", required=True)
+    codex_threads = codex_sub.add_parser("threads", help="Codex 프로젝트와 스레드 목록 조회")
+    codex_threads.add_argument("--format", choices=["text", "json"], default="text", help="출력 형식")
 
     slack = subparsers.add_parser("slack", help="Slack 알림")
     slack_sub = slack.add_subparsers(dest="command", required=True)
@@ -534,6 +540,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.area == "jira" and args.command == "flow":
         print(team_flow(config, days=args.days, max_results=args.max_results, output_format=args.format))
+        return 0
+
+    if args.area == "codex" and args.command == "threads":
+        print(format_codex_threads(output_format=args.format))
         return 0
 
     if args.area == "slack" and args.command == "test":

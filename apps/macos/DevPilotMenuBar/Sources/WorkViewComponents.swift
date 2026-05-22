@@ -76,6 +76,16 @@ struct WorkSidebarView: View {
                 }
 
                 WorkSidebarButton(
+                    title: "Codex",
+                    systemImage: "sparkles.rectangle.stack",
+                    detail: nil,
+                    isSelected: selectedSection == "codex",
+                    isCollapsed: isCollapsed
+                ) {
+                    selectedSection = "codex"
+                }
+
+                WorkSidebarButton(
                     title: "보고서",
                     systemImage: "doc.text",
                     detail: reportReady ? "작성됨" : nil,

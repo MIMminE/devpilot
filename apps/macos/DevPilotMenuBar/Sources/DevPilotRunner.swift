@@ -259,6 +259,17 @@ final class DevPilotRunner: NSObject, ObservableObject, NSWindowDelegate {
         }
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
 
+        if url.host == "work", url.path == "/open" {
+            let section = Self.queryValue("section", in: items)
+            if !section.isEmpty {
+                UserDefaults.standard.set(section, forKey: "devpilot.work.selectedSection")
+            }
+            openWorkWindow()
+            status = section.isEmpty ? "작업 콘솔을 열었습니다" : "\(section) 화면을 열었습니다"
+            isHandlingDeepLink = false
+            return
+        }
+
         if url.host == "branch", url.path == "/create" {
             let issue = Self.queryValue("issue", in: items)
             let repo = Self.queryValue("repo", in: items)
@@ -362,7 +373,9 @@ final class DevPilotRunner: NSObject, ObservableObject, NSWindowDelegate {
     func openWorkWindow() {
         NSApplication.shared.setActivationPolicy(.regular)
         if let workWindow {
+            workWindow.level = .floating
             workWindow.makeKeyAndOrderFront(nil)
+            workWindow.orderFrontRegardless()
             NSApplication.shared.activate(ignoringOtherApps: true)
             return
         }
@@ -375,11 +388,13 @@ final class DevPilotRunner: NSObject, ObservableObject, NSWindowDelegate {
         )
         window.title = "DevPilot 작업 콘솔"
         window.center()
+        window.level = .floating
         window.contentView = NSHostingView(rootView: WorkView(runner: self))
         window.isReleasedWhenClosed = false
         window.delegate = self
         workWindow = window
         window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
 
@@ -1529,6 +1544,37 @@ final class DevPilotRunner: NSObject, ObservableObject, NSWindowDelegate {
         return value
     }
 
+    func loadCodexProjects() async -> [CodexProjectRecord] {
+        let result = await Self.executeDetached(["codex", "threads", "--format", "json"])
+        lastOutput = result.output
+        guard result.succeeded, let data = result.output.data(using: .utf8),
+              let projects = try? JSONDecoder().decode([CodexProjectRecord].self, from: data) else {
+            status = "Codex 스레드 조회 실패"
+            return []
+        }
+        status = "Codex 스레드를 불러왔습니다"
+        return projects
+    }
+
+    func openCodexProject(cwd: String) async -> DevPilotCommandResult {
+        let trimmed = cwd.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed != "(프로젝트 없음)" else {
+            let message = "Codex 프로젝트 경로가 없습니다."
+            status = message
+            return DevPilotCommandResult(succeeded: false, output: message, summary: message)
+        }
+        let codexURL = Self.codexExecutableURL()
+        guard FileManager.default.isExecutableFile(atPath: codexURL.path) else {
+            let message = "Codex CLI를 찾지 못했습니다: \(codexURL.path)"
+            status = message
+            return DevPilotCommandResult(succeeded: false, output: message, summary: message)
+        }
+        let result = await Self.executeDetachedRaw(["app", trimmed], executableURL: codexURL)
+        lastOutput = result.output
+        status = result.succeeded ? "Codex 프로젝트 열기 완료" : "Codex 프로젝트 열기 실패"
+        return DevPilotCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)
+    }
+
     private nonisolated static func parseSlackChannels(_ output: String) -> [SlackChannel] {
         output
             .split(separator: "\n")
@@ -1928,12 +1974,12 @@ final class DevPilotRunner: NSObject, ObservableObject, NSWindowDelegate {
         if let explicit = ProcessInfo.processInfo.environment["DEVPILOT_BIN"], !explicit.isEmpty {
             return (URL(fileURLWithPath: explicit), [])
         }
-        if let bundled = Bundle.main.url(forResource: "devpilot", withExtension: nil, subdirectory: "bin") {
-            return (bundled, [])
-        }
         let developmentExecutable = projectRootURL().appendingPathComponent(".venv/bin/devpilot")
         if FileManager.default.isExecutableFile(atPath: developmentExecutable.path) {
             return (developmentExecutable, [])
+        }
+        if let bundled = Bundle.main.url(forResource: "devpilot", withExtension: nil, subdirectory: "bin") {
+            return (bundled, [])
         }
         return (URL(fileURLWithPath: "/usr/bin/env"), ["devpilot"])
     }

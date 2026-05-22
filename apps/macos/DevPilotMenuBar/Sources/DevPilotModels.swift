@@ -242,6 +242,48 @@ struct LocalRepositoryOption: Identifiable, Hashable, Sendable {
     }
 }
 
+struct CodexProjectRecord: Identifiable, Codable, Hashable {
+    let projectName: String
+    let cwd: String
+    let threadCount: Int
+    let threads: [CodexThreadRecord]
+
+    var id: String {
+        cwd.isEmpty ? projectName : cwd
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case projectName = "project_name"
+        case cwd
+        case threadCount = "thread_count"
+        case threads
+    }
+}
+
+struct CodexThreadRecord: Identifiable, Codable, Hashable {
+    let threadID: String
+    let name: String
+    let cwd: String
+    let path: String
+    let source: String
+    let createdAt: String
+    let updatedAt: String
+
+    var id: String {
+        threadID
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case threadID = "thread_id"
+        case name
+        case cwd
+        case path
+        case source
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
 struct BranchOption: Identifiable, Hashable, Sendable {
     let name: String
     let current: Bool
