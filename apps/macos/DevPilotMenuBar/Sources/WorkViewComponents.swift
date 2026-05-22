@@ -46,7 +46,7 @@ struct WorkSidebarView: View {
 
             VStack(spacing: 6) {
                 WorkSidebarButton(
-                    title: "대시보드",
+                    title: "홈",
                     systemImage: "rectangle.grid.2x2",
                     detail: nil,
                     isSelected: selectedSection == "dashboard" || selectedSection == "briefing",
@@ -56,73 +56,43 @@ struct WorkSidebarView: View {
                 }
 
                 WorkSidebarButton(
-                    title: "작업",
-                    systemImage: "checklist",
-                    detail: nil,
-                    isSelected: selectedSection == "work" || selectedSection == "jira" || selectedSection == "tools" || selectedSection == "issueFlow",
-                    isCollapsed: isCollapsed
-                ) {
-                    selectedSection = "work"
-                }
-
-                WorkSidebarButton(
-                    title: "일감 콘솔",
+                    title: "일감 처리",
                     systemImage: "point.3.connected.trianglepath.dotted",
                     detail: nil,
-                    isSelected: selectedSection == "issueFlow",
+                    isSelected: selectedSection == "issueFlow" || selectedSection == "work" || selectedSection == "jira" || selectedSection == "tools",
                     isCollapsed: isCollapsed
                 ) {
                     selectedSection = "issueFlow"
                 }
 
                 WorkSidebarButton(
-                    title: "저장소",
+                    title: "작업 환경",
                     systemImage: "folder.badge.gearshape",
                     detail: repositoryCount > 0 ? "\(repositoryCount)" : nil,
-                    isSelected: selectedSection == "repositories" || selectedSection == "workspace",
+                    isSelected: selectedSection == "workspaceHub" || selectedSection == "repositories" || selectedSection == "workspace" || selectedSection == "codex",
                     isCollapsed: isCollapsed
                 ) {
-                    selectedSection = "repositories"
+                    selectedSection = "workspaceHub"
                 }
 
                 WorkSidebarButton(
-                    title: "Codex",
-                    systemImage: "sparkles.rectangle.stack",
-                    detail: nil,
-                    isSelected: selectedSection == "codex",
+                    title: "보고 기록",
+                    systemImage: "doc.text",
+                    detail: reportReady ? "작성됨" : nil,
+                    isSelected: selectedSection == "reportHub" || selectedSection == "report" || selectedSection == "records",
                     isCollapsed: isCollapsed
                 ) {
-                    selectedSection = "codex"
+                    selectedSection = "reportHub"
                 }
 
                 WorkSidebarButton(
-                    title: "토큰",
+                    title: "상태",
                     systemImage: "key.horizontal",
                     detail: nil,
                     isSelected: selectedSection == "tokens",
                     isCollapsed: isCollapsed
                 ) {
                     selectedSection = "tokens"
-                }
-
-                WorkSidebarButton(
-                    title: "보고서",
-                    systemImage: "doc.text",
-                    detail: reportReady ? "작성됨" : nil,
-                    isSelected: selectedSection == "report",
-                    isCollapsed: isCollapsed
-                ) {
-                    selectedSection = "report"
-                }
-
-                WorkSidebarButton(
-                    title: "기록",
-                    systemImage: "calendar",
-                    detail: nil,
-                    isSelected: selectedSection == "records",
-                    isCollapsed: isCollapsed
-                ) {
-                    selectedSection = "records"
                 }
             }
 

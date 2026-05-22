@@ -547,23 +547,14 @@ struct WorkView: View {
         switch selectedSection {
         case "dashboard", "briefing":
             dashboardSection
-        case "work", "jira", "tools":
-            workSection
-        case "issueFlow":
+        case "work", "jira", "tools", "issueFlow":
             issueFlowSection
-        case "repositories", "workspace":
-            VStack(alignment: .leading, spacing: 16) {
-                repositoryActions
-                repositorySection
-            }
-        case "codex":
-            codexSection
+        case "workspaceHub", "repositories", "workspace", "codex":
+            workspaceHubSection
         case "tokens":
             tokenSection
-        case "report":
-            reportSection
-        case "records":
-            recordsSection
+        case "reportHub", "report", "records":
+            reportHubSection
         default:
             dashboardSection
         }
@@ -597,6 +588,21 @@ struct WorkView: View {
         VStack(alignment: .leading, spacing: 16) {
             myJiraDashboardPanel
             commandCenter
+        }
+    }
+
+    private var workspaceHubSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            repositoryActions
+            repositorySection
+            codexSection
+        }
+    }
+
+    private var reportHubSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            reportSection
+            recordsSection
         }
     }
 
@@ -4190,7 +4196,7 @@ struct WorkView: View {
     }
 
     private func loadCodexProjectsIfNeeded() async {
-        guard selectedSection == "codex", codexProjects.isEmpty, !isLoadingCodexProjects else {
+        guard (selectedSection == "codex" || selectedSection == "workspaceHub"), codexProjects.isEmpty, !isLoadingCodexProjects else {
             return
         }
         await loadCodexProjects(force: false)
