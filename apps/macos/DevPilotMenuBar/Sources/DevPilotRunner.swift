@@ -924,8 +924,12 @@ final class DevPilotRunner: NSObject, ObservableObject, NSWindowDelegate {
         .sorted { $0.updatedAt > $1.updatedAt }
     }
 
-    func loadIssueDirector(issue: String) async -> IssueDirectorRecord? {
-        let result = await Self.executeDetached(["issue", "director", issue, "--format", "json"])
+    func loadIssueDirector(issue: String, refresh: Bool = false) async -> IssueDirectorRecord? {
+        var arguments = ["issue", "director", issue, "--format", "json"]
+        if refresh {
+            arguments.append("--refresh")
+        }
+        let result = await Self.executeDetached(arguments)
         lastOutput = result.output
         guard result.succeeded, let data = result.output.data(using: .utf8),
               let value = try? JSONDecoder().decode(IssueDirectorRecord.self, from: data) else {

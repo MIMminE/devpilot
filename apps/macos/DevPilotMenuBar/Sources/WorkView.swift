@@ -4317,7 +4317,7 @@ struct WorkView: View {
             return
         }
         loadingIssueDirectorKey = workflow.issueKey
-        if let director = await runner.loadIssueDirector(issue: workflow.issueKey) {
+        if let director = await runner.loadIssueDirector(issue: workflow.issueKey, refresh: force) {
             issueDirectorDrafts[workflow.issueKey] = director
         }
         loadingIssueDirectorKey = ""

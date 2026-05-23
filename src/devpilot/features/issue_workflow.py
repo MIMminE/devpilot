@@ -8,9 +8,10 @@ import shlex
 import subprocess
 from zoneinfo import ZoneInfo
 
-from devpilot.app_state import read_state, write_state
+from devpilot.app_state import app_data_dir, read_state, write_state
 from devpilot.config import AppConfig
 from devpilot.features.issue_repositories import issue_repository_link_groups
+from devpilot.integrations.codex_app_server import create_codex_thread
 from devpilot.integrations.git_repos import ahead_behind, current_branch, status_porcelain
 from devpilot.integrations.openai_report import generate_text
 
@@ -245,14 +246,21 @@ def format_workflow(config: AppConfig, issue_key: str) -> str:
     return _format_workflow_detail(config, key, workflow)
 
 
-def issue_director_briefing(config: AppConfig, issue_key: str, *, output_format: str = "text", provider: str = "auto") -> str:
+def issue_director_briefing(config: AppConfig, issue_key: str, *, output_format: str = "text", provider: str = "auto", refresh: bool = False) -> str:
     key = _normalize_issue_key(issue_key)
     workflow = get_workflow(key)
     if not workflow:
         raise RuntimeError(f"{key} 일감 워크플로우 기록이 없습니다.")
     selected_provider = _director_provider(config, provider)
+    cached = _cached_director_payload(workflow, selected_provider, refresh=refresh)
+    if cached:
+        if output_format == "json":
+            return json.dumps(cached, ensure_ascii=False, indent=2)
+        return _format_director_payload(cached)
     payload = _director_payload(config, key, workflow, provider=selected_provider)
-    payload = _apply_director_provider(config, payload, selected_provider)
+    payload = _apply_director_provider(config, key, payload, selected_provider)
+    if selected_provider != "local-director":
+        _save_director_payload(config, key, payload)
     if output_format == "json":
         return json.dumps(payload, ensure_ascii=False, indent=2)
     return _format_director_payload(payload)
@@ -376,6 +384,16 @@ def _director_provider(config: AppConfig, provider: str) -> str:
     return value
 
 
+def _cached_director_payload(workflow: dict, provider: str, *, refresh: bool) -> dict | None:
+    if refresh or provider == "local-director":
+        return None
+    director = workflow.get("director") if isinstance(workflow.get("director"), dict) else {}
+    if director.get("mode") != provider:
+        return None
+    payload = director.get("payload")
+    return payload if isinstance(payload, dict) else None
+
+
 def _director_payload(config: AppConfig, key: str, workflow: dict, *, provider: str) -> dict:
     repos = _repository_items(workflow)
     repo_states = _repo_states(config, workflow)
@@ -452,17 +470,102 @@ def _director_payload(config: AppConfig, key: str, workflow: dict, *, provider: 
     }
 
 
-def _apply_director_provider(config: AppConfig, payload: dict, provider: str) -> dict:
+def _apply_director_provider(config: AppConfig, key: str, payload: dict, provider: str) -> dict:
     if provider == "local-director":
         return payload
     if provider == "codex-local":
-        payload["provider_note"] = "Codex Local 모드입니다. 기존 Codex 분석 스레드와 로컬 워크플로우 상태를 기준으로 지휘관 초안을 표시합니다."
-        return payload
+        return _codex_director_payload(key, payload)
     if provider == "openai-api":
         return _openai_director_payload(config, payload)
     if provider == "custom-command":
         return _custom_director_payload(config, payload)
     return payload
+
+
+def _codex_director_payload(key: str, payload: dict) -> dict:
+    directory = app_data_dir() / "issue-director"
+    directory.mkdir(parents=True, exist_ok=True)
+    prompt = _codex_director_prompt(payload)
+    prompt_path = directory / f"{key.lower()}-director-prompt.md"
+    prompt_path.write_text(prompt.rstrip() + "\n", encoding="utf-8")
+    workspace = app_data_dir() / "codex-workspaces" / key
+    workspace.mkdir(parents=True, exist_ok=True)
+    (workspace / f"{key}-director.md").write_text(prompt.rstrip() + "\n", encoding="utf-8")
+    thread_name = f"[{key}] AI 작업 지휘관"
+    try:
+        thread = create_codex_thread(workspace_path=workspace, thread_name=thread_name, prompt=prompt, timeout_seconds=180)
+    except Exception as exc:
+        payload["provider_note"] = f"Codex Local 실행 실패: {exc}"
+        payload["prompt_path"] = str(prompt_path)
+        return payload
+
+    response_path = directory / f"{key.lower()}-director-response.md"
+    response_path.write_text(thread.response.rstrip() + "\n", encoding="utf-8")
+    parsed = _json_from_text(thread.response)
+    if parsed:
+        parsed.setdefault("issue_key", payload.get("issue_key", key))
+        parsed["mode"] = "codex-local"
+        parsed["provider_note"] = "Codex Local 응답 기반으로 지휘관 초안을 갱신했습니다."
+        parsed["codex_thread_id"] = thread.thread_id
+        parsed["codex_thread_name"] = thread.thread_name
+        parsed["codex_thread_path"] = thread.thread_path
+        parsed["codex_workspace"] = thread.cwd
+        parsed["prompt_path"] = str(prompt_path)
+        parsed["response_path"] = str(response_path)
+        return parsed
+    payload["provider_note"] = "Codex 응답을 JSON으로 해석하지 못해 local-director 결과를 사용했습니다."
+    payload["codex_thread_id"] = thread.thread_id
+    payload["codex_thread_name"] = thread.thread_name
+    payload["codex_thread_path"] = thread.thread_path
+    payload["codex_workspace"] = thread.cwd
+    payload["prompt_path"] = str(prompt_path)
+    payload["response_path"] = str(response_path)
+    return payload
+
+
+def _codex_director_prompt(payload: dict) -> str:
+    return "\n".join(
+        [
+            "# DevPilot AI 작업 지휘관 요청",
+            "",
+            "너는 내 개발 매니저이자 구현 파트너다. 아래 일감 워크플로우 JSON을 기준으로 현재 진행 상황을 판단하고, 다음 작업을 지휘관 패널에 표시할 JSON으로 갱신해줘.",
+            "",
+            "## 응답 규칙",
+            "",
+            "- 반드시 JSON 객체만 반환한다.",
+            "- 기존 schema를 유지한다: issue_key, project, summary, issue_type, progress, current_focus, next_approval, risks, sections, generated_at, mode.",
+            "- sections는 분석, 작업 계획, Repository 후보, 브랜치 전략, 테스트 추천, 보고 초안을 유지한다.",
+            "- 사실과 추정을 구분하고, 모르는 내용은 단정하지 않는다.",
+            "- 실제 코드 변경은 하지 않는다.",
+            "",
+            "## 입력 JSON",
+            "",
+            json.dumps(payload, ensure_ascii=False, indent=2),
+        ]
+    )
+
+
+def _json_from_text(text: str) -> dict | None:
+    value = text.strip()
+    if value.startswith("```"):
+        lines = value.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].startswith("```"):
+            lines = lines[:-1]
+        value = "\n".join(lines).strip()
+    try:
+        loaded = json.loads(value)
+    except json.JSONDecodeError:
+        start = value.find("{")
+        end = value.rfind("}")
+        if start < 0 or end <= start:
+            return None
+        try:
+            loaded = json.loads(value[start : end + 1])
+        except json.JSONDecodeError:
+            return None
+    return loaded if isinstance(loaded, dict) else None
 
 
 def _openai_director_payload(config: AppConfig, payload: dict) -> dict:
@@ -520,6 +623,22 @@ def _custom_director_payload(config: AppConfig, payload: dict) -> dict:
         loaded["mode"] = "custom-command"
         return loaded
     return payload
+
+
+def _save_director_payload(config: AppConfig, key: str, payload: dict) -> None:
+    now = _now(config)
+    state = read_state()
+    workflows = _workflow_map(state)
+    workflow = _ensure_workflow(workflows, key, summary=str(payload.get("summary") or ""), now=now)
+    workflow["director"] = {
+        "mode": payload.get("mode") or "local-director",
+        "generated_at": payload.get("generated_at") or now,
+        "payload": payload,
+    }
+    workflow["updated_at"] = now
+    _append_event(workflow, "director_generated", f"AI 작업 지휘관을 갱신했습니다: {payload.get('mode') or '-'}", now)
+    state["issue_workflows"] = workflows
+    write_state(state)
 
 
 def _format_director_payload(payload: dict) -> str:

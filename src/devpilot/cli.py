@@ -99,6 +99,7 @@ def build_parser() -> argparse.ArgumentParser:
     issue_director.add_argument("issue_key", help="일감 키")
     issue_director.add_argument("--format", choices=["text", "json"], default="text", help="출력 형식")
     issue_director.add_argument("--provider", choices=["auto", "local", "local-director", "codex", "codex-local", "openai", "openai-api", "custom", "custom-command"], default="auto", help="AI 지휘관 생성 방식")
+    issue_director.add_argument("--refresh", action="store_true", help="저장된 AI 지휘관 결과를 재사용하지 않고 새로 생성")
     issue_status = issue_sub.add_parser("status", help="일감 워크플로우 상태 변경")
     issue_status.add_argument("issue_key", help="Jira 이슈 키")
     issue_status.add_argument("--state", required=True, choices=["assigned", "branch_ready", "in_progress", "implemented", "tested", "pr_ready", "reviewing", "merged", "reported", "done", "blocked"], help="변경할 상태")
@@ -450,7 +451,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.area == "issue" and args.command == "director":
-        print(issue_director_briefing(config, args.issue_key, output_format=args.format, provider=args.provider))
+        print(issue_director_briefing(config, args.issue_key, output_format=args.format, provider=args.provider, refresh=args.refresh))
         return 0
 
     if args.area == "issue" and args.command == "status":
