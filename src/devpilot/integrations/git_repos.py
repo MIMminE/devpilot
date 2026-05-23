@@ -137,7 +137,11 @@ def commits_between(repo: Path, *, author: str, since: str, until: str | None) -
 
 
 def status_porcelain(repo: Path) -> list[str]:
-    output = git(repo, "status", "--porcelain=v1")
+    result = git_result(repo, "status", "--porcelain=v1")
+    if result.returncode != 0:
+        detail = _git_result_message(result)
+        raise RuntimeError(f"git status --porcelain=v1 failed in {repo}: {detail}")
+    output = result.stdout
     return [line for line in output.splitlines() if line.strip()]
 
 
@@ -535,7 +539,11 @@ def staged_files(repo: Path) -> list[str]:
 
 
 def changed_files(repo: Path) -> list[str]:
-    output = git(repo, "status", "--porcelain=v1")
+    result = git_result(repo, "status", "--porcelain=v1")
+    if result.returncode != 0:
+        detail = _git_result_message(result)
+        raise RuntimeError(f"git status --porcelain=v1 failed in {repo}: {detail}")
+    output = result.stdout
     paths: list[str] = []
     for line in output.splitlines():
         if not line.strip():

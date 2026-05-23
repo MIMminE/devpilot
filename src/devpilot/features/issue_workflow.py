@@ -1061,14 +1061,12 @@ def _recommended_next_action(status: str, has_tests: bool) -> str:
     return "상태 확인 후 다음 작업 기록"
 
 
-def _repo_states(config: AppConfig, workflow: dict) -> list[WorkflowRepoState]:
-    managed = {item.path.expanduser().resolve(): item.path.expanduser().resolve() for item in config.repo_projects}
+def _repo_states(_config: AppConfig, workflow: dict) -> list[WorkflowRepoState]:
     states: list[WorkflowRepoState] = []
     for item in _repository_items(workflow):
         repo = Path(str(item.get("repo_path") or "")).expanduser().resolve()
-        is_managed_source = repo in managed
         is_git_worktree = (repo / ".git").exists()
-        if not is_git_worktree or (not is_managed_source and "issue-workspaces" not in str(repo)):
+        if not is_git_worktree:
             continue
         try:
             branch = current_branch(repo)
