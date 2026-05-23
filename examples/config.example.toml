@@ -63,6 +63,15 @@ api_key = ""
 # AI 초안 생성 모델입니다.
 model = "gpt-5-mini"
 
+[ai]
+# AI 작업 지휘관/초안 생성 방식입니다.
+# local-director: DevPilot 로컬 상태 기반
+# codex-local: 로컬 Codex 연동 중심
+# openai-api: OpenAI API 직접 호출
+# custom-command: stdin JSON -> stdout JSON 커스텀 명령
+provider = "local-director"
+custom_command = ""
+
 [calendar]
 # 캘린더 연동 여부입니다. Google/Outlook의 비공개 iCal 주소 또는 로컬 .ics 파일을 사용할 수 있습니다.
 enabled = false

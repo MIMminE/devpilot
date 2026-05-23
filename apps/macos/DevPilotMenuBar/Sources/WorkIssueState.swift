@@ -257,6 +257,7 @@ struct IssueDirectorRecord: Identifiable, Decodable, Hashable {
     let sections: [IssueDirectorSectionRecord]
     let generatedAt: String
     let mode: String
+    let providerNote: String
 
     var id: String { issueKey }
 
@@ -272,6 +273,7 @@ struct IssueDirectorRecord: Identifiable, Decodable, Hashable {
         case sections
         case generatedAt = "generated_at"
         case mode
+        case providerNote = "provider_note"
     }
 
     init(from decoder: Decoder) throws {
@@ -287,6 +289,7 @@ struct IssueDirectorRecord: Identifiable, Decodable, Hashable {
         sections = try container.decodeIfPresent([IssueDirectorSectionRecord].self, forKey: .sections) ?? []
         generatedAt = try container.decodeIfPresent(String.self, forKey: .generatedAt) ?? ""
         mode = try container.decodeIfPresent(String.self, forKey: .mode) ?? ""
+        providerNote = try container.decodeIfPresent(String.self, forKey: .providerNote) ?? ""
     }
 }
 

@@ -29,6 +29,8 @@ struct DevPilotSettingsStore {
             repoProjectBaseBranches: Dictionary(
                 uniqueKeysWithValues: readRepositoryProjects().map { ($0.path, $0.baseBranch) }
             ),
+            aiProvider: readConfigValue(section: "ai", key: "provider").isEmpty ? "local-director" : readConfigValue(section: "ai", key: "provider"),
+            aiCustomCommand: readConfigValue(section: "ai", key: "custom_command"),
             openAIKey: readConfigValue(section: "openai", key: "api_key"),
             jiraDailyEnabled: readBoolConfigValue(section: "feature_groups", key: "jira", defaultValue: true),
             gitReportEnabled: readBoolConfigValue(section: "feature_groups", key: "git", defaultValue: true),
@@ -181,6 +183,9 @@ struct DevPilotSettingsStore {
             baseBranches: settings.repoProjectBaseBranches
         )
         text = replaceConfigValue(text, section: "openai", key: "api_key", value: settings.openAIKey)
+        text = replaceConfigValue(text, section: "openai", key: "model", value: "gpt-5-mini")
+        text = replaceConfigValue(text, section: "ai", key: "provider", value: settings.aiProvider)
+        text = replaceConfigValue(text, section: "ai", key: "custom_command", value: settings.aiCustomCommand)
         text = replaceConfigBoolValue(text, section: "feature_groups", key: "jira", value: settings.jiraIntegrationEnabled)
         text = replaceConfigBoolValue(text, section: "feature_groups", key: "git", value: settings.gitReportEnabled || settings.gitStatusEnabled)
         text = replaceConfigBoolValue(text, section: "feature_groups", key: "routines", value: true)

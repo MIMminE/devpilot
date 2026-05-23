@@ -105,6 +105,8 @@ struct DevPilotSettings {
     var cloneRoot: String
     var repoProjectPaths: Set<String>
     var repoProjectBaseBranches: [String: String]
+    var aiProvider: String
+    var aiCustomCommand: String
     var openAIKey: String
     var jiraDailyEnabled: Bool
     var gitReportEnabled: Bool
@@ -163,6 +165,15 @@ struct DevPilotSettings {
 
     var workCommitPreviewRowsOrDefault: Int {
         min(max(workCommitPreviewRows, 1), 8)
+    }
+
+    var aiProviderLabel: String {
+        switch aiProvider {
+        case "codex-local": return "Codex Local"
+        case "openai-api": return "OpenAI API"
+        case "custom-command": return "커스텀 명령"
+        default: return "로컬 초안"
+        }
     }
 }
 

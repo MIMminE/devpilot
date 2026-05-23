@@ -411,12 +411,45 @@ struct SetupView: View {
             isExpanded: $isAPIExpanded
         ) {
             VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("AI 실행 방식")
+                        .font(.caption.weight(.semibold))
+                    Picker("AI 실행 방식", selection: $settings.aiProvider) {
+                        Text("로컬 초안").tag("local-director")
+                        Text("Codex Local").tag("codex-local")
+                        Text("OpenAI API").tag("openai-api")
+                        Text("커스텀 명령").tag("custom-command")
+                    }
+                    .pickerStyle(.segmented)
+                    Text(aiProviderHelpText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 SettingsSecureField(title: "OpenAI API Key", placeholder: "Git 보고서 AI 요약 사용 시 입력", text: $settings.openAIKey)
+                    .disabled(settings.aiProvider != "openai-api")
+                    .opacity(settings.aiProvider == "openai-api" ? 1 : 0.52)
+                SettingsTextField(title: "커스텀 명령", placeholder: "예: /usr/local/bin/devpilot-ai-director", text: $settings.aiCustomCommand)
+                    .disabled(settings.aiProvider != "custom-command")
+                    .opacity(settings.aiProvider == "custom-command" ? 1 : 0.52)
                 Text("기본 보고서 초안과 Codex 다듬기는 앱 기록을 기반으로 동작합니다. OpenAI API Key는 API 호출형 요약 기능을 별도로 쓸 때만 필요합니다.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             .padding(.vertical, 6)
+        }
+    }
+
+    private var aiProviderHelpText: String {
+        switch settings.aiProvider {
+        case "codex-local":
+            return "로컬 Codex 분석 스레드와 DevPilot 워크플로우 상태를 중심으로 지휘관 초안을 만듭니다."
+        case "openai-api":
+            return "OpenAI API 키로 지휘관 결과를 보강합니다. 키가 없으면 로컬 초안으로 대체됩니다."
+        case "custom-command":
+            return "DevPilot이 입력 JSON을 stdin으로 전달하고, 명령의 stdout JSON을 지휘관 결과로 사용합니다."
+        default:
+            return "토큰 없이 DevPilot의 로컬 일감, Git, 테스트, 보고 기록만으로 지휘관 초안을 만듭니다."
         }
     }
 

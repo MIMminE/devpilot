@@ -4,12 +4,15 @@ from dataclasses import dataclass
 from datetime import datetime
 import json
 from pathlib import Path
+import shlex
+import subprocess
 from zoneinfo import ZoneInfo
 
 from devpilot.app_state import read_state, write_state
 from devpilot.config import AppConfig
 from devpilot.features.issue_repositories import issue_repository_link_groups
 from devpilot.integrations.git_repos import ahead_behind, current_branch, status_porcelain
+from devpilot.integrations.openai_report import generate_text
 
 
 STATUS_ORDER = [
@@ -242,12 +245,14 @@ def format_workflow(config: AppConfig, issue_key: str) -> str:
     return _format_workflow_detail(config, key, workflow)
 
 
-def issue_director_briefing(config: AppConfig, issue_key: str, *, output_format: str = "text") -> str:
+def issue_director_briefing(config: AppConfig, issue_key: str, *, output_format: str = "text", provider: str = "auto") -> str:
     key = _normalize_issue_key(issue_key)
     workflow = get_workflow(key)
     if not workflow:
         raise RuntimeError(f"{key} 일감 워크플로우 기록이 없습니다.")
-    payload = _director_payload(config, key, workflow)
+    selected_provider = _director_provider(config, provider)
+    payload = _director_payload(config, key, workflow, provider=selected_provider)
+    payload = _apply_director_provider(config, payload, selected_provider)
     if output_format == "json":
         return json.dumps(payload, ensure_ascii=False, indent=2)
     return _format_director_payload(payload)
@@ -355,7 +360,23 @@ def _format_workflow_detail(config: AppConfig, key: str, workflow: dict) -> str:
     return "\n".join(lines)
 
 
-def _director_payload(config: AppConfig, key: str, workflow: dict) -> dict:
+def _director_provider(config: AppConfig, provider: str) -> str:
+    value = provider.strip() if provider else "auto"
+    if value == "auto":
+        value = config.openai.provider
+    aliases = {
+        "local": "local-director",
+        "codex": "codex-local",
+        "openai": "openai-api",
+        "custom": "custom-command",
+    }
+    value = aliases.get(value, value)
+    if value not in {"local-director", "codex-local", "openai-api", "custom-command"}:
+        return "local-director"
+    return value
+
+
+def _director_payload(config: AppConfig, key: str, workflow: dict, *, provider: str) -> dict:
     repos = _repository_items(workflow)
     repo_states = _repo_states(config, workflow)
     tests = [item for item in workflow.get("tests", []) if isinstance(item, dict)]
@@ -427,8 +448,78 @@ def _director_payload(config: AppConfig, key: str, workflow: dict) -> dict:
         "risks": risks,
         "sections": sections,
         "generated_at": _now(config),
-        "mode": "local-director",
+        "mode": provider,
     }
+
+
+def _apply_director_provider(config: AppConfig, payload: dict, provider: str) -> dict:
+    if provider == "local-director":
+        return payload
+    if provider == "codex-local":
+        payload["provider_note"] = "Codex Local 모드입니다. 기존 Codex 분석 스레드와 로컬 워크플로우 상태를 기준으로 지휘관 초안을 표시합니다."
+        return payload
+    if provider == "openai-api":
+        return _openai_director_payload(config, payload)
+    if provider == "custom-command":
+        return _custom_director_payload(config, payload)
+    return payload
+
+
+def _openai_director_payload(config: AppConfig, payload: dict) -> dict:
+    prompt = (
+        "아래 JSON은 개발 일감 처리 상태입니다. 기존 JSON schema를 유지하면서 "
+        "sections/body/items/risks/current_focus/next_approval을 더 실무적인 한국어로 보강해줘. "
+        "반드시 JSON만 반환해줘.\n\n"
+        + json.dumps(payload, ensure_ascii=False, indent=2)
+    )
+    fallback = json.dumps({**payload, "provider_note": "OpenAI API 키가 없어 local-director 결과를 사용했습니다."}, ensure_ascii=False)
+    text = generate_text(
+        config.openai,
+        system="You are a Korean engineering manager. Return strict JSON only.",
+        prompt=prompt,
+        fallback=fallback,
+    )
+    try:
+        loaded = json.loads(text)
+    except json.JSONDecodeError:
+        payload["provider_note"] = "OpenAI 응답을 JSON으로 해석하지 못해 local-director 결과를 사용했습니다."
+        return payload
+    if isinstance(loaded, dict):
+        loaded["mode"] = "openai-api"
+        return loaded
+    return payload
+
+
+def _custom_director_payload(config: AppConfig, payload: dict) -> dict:
+    command = config.openai.custom_command.strip()
+    if not command:
+        payload["provider_note"] = "custom-command가 설정되지 않아 local-director 결과를 사용했습니다."
+        return payload
+    try:
+        result = subprocess.run(
+            shlex.split(command),
+            input=json.dumps(payload, ensure_ascii=False),
+            capture_output=True,
+            text=True,
+            timeout=90,
+            check=False,
+        )
+    except Exception as exc:
+        payload["provider_note"] = f"custom-command 실행 실패: {exc}"
+        return payload
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        payload["provider_note"] = f"custom-command 실패: {detail[:300]}"
+        return payload
+    try:
+        loaded = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        payload["provider_note"] = "custom-command 출력이 JSON이 아니어서 local-director 결과를 사용했습니다."
+        return payload
+    if isinstance(loaded, dict):
+        loaded["mode"] = "custom-command"
+        return loaded
+    return payload
 
 
 def _format_director_payload(payload: dict) -> str:
@@ -436,10 +527,13 @@ def _format_director_payload(payload: dict) -> str:
         f"{payload['issue_key']} AI 작업 지휘관",
         f"- 프로젝트: {payload['project']}",
         f"- 유형: {payload['issue_type']}",
+        f"- 생성 방식: {payload.get('mode') or '-'}",
         f"- 현재 초점: {payload['current_focus']}",
         f"- 다음 승인: {payload['next_approval']}",
         "",
     ]
+    if payload.get("provider_note"):
+        lines.extend(["[Provider]", f"- {payload['provider_note']}", ""])
     for section in payload.get("sections", []):
         lines.append(f"[{section.get('title')}] {section.get('status')}")
         if section.get("body"):

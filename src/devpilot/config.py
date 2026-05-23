@@ -49,6 +49,8 @@ class SlackConfig:
 class OpenAIConfig:
     api_key: str
     model: str
+    provider: str
+    custom_command: str
 
 
 @dataclass(frozen=True)
@@ -152,6 +154,7 @@ def load_config(path: str | Path) -> AppConfig:
     slack_raw = raw.get("slack", {})
     slack_channels_raw = slack_raw.get("channels", {})
     openai_raw = raw.get("openai", {})
+    ai_raw = raw.get("ai", {})
     calendar_raw = raw.get("calendar", {})
     features_raw = raw.get("features", {})
     feature_groups_raw = raw.get("feature_groups", {})
@@ -224,6 +227,8 @@ def load_config(path: str | Path) -> AppConfig:
         openai=OpenAIConfig(
             api_key=_config_or_env(openai_raw, "api_key", openai_raw.get("api_key_env", "OPENAI_API_KEY")),
             model=openai_raw.get("model", "gpt-5-mini"),
+            provider=str(ai_raw.get("provider", openai_raw.get("provider", "local-director"))).strip() or "local-director",
+            custom_command=str(ai_raw.get("custom_command", openai_raw.get("custom_command", ""))).strip(),
         ),
         calendar=CalendarConfig(
             enabled=bool(calendar_raw.get("enabled", False)),

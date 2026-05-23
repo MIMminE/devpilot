@@ -813,6 +813,9 @@ struct WorkView: View {
                 Label("AI 작업 지휘관", systemImage: "sparkles")
                     .font(.subheadline.weight(.semibold))
                 flowTag(director?.issueType.isEmpty == false ? director?.issueType ?? "" : "초안", tint: .purple)
+                if let director {
+                    flowTag(issueDirectorModeLabel(director.mode), tint: .secondary)
+                }
                 Spacer()
                 if loadingIssueDirectorKey == workflow.issueKey {
                     ProgressView()
@@ -832,6 +835,13 @@ struct WorkView: View {
                     briefingMetric(title: "진행", value: director.progress.isEmpty ? "-" : director.progress, systemImage: "gauge.with.dots.needle.50percent", tint: .blue, isAttention: false)
                     briefingMetric(title: "초점", value: director.currentFocus.isEmpty ? "-" : director.currentFocus, systemImage: "scope", tint: .purple, isAttention: false)
                     briefingMetric(title: "승인", value: director.nextApproval.isEmpty ? "-" : director.nextApproval, systemImage: "hand.tap", tint: .orange, isAttention: true)
+                }
+
+                if !director.providerNote.isEmpty {
+                    Text(director.providerNote)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 LazyVGrid(
@@ -933,6 +943,15 @@ struct WorkView: View {
         case "tests": return .orange
         case "report": return .indigo
         default: return .secondary
+        }
+    }
+
+    private func issueDirectorModeLabel(_ mode: String) -> String {
+        switch mode {
+        case "codex-local": return "Codex Local"
+        case "openai-api": return "OpenAI API"
+        case "custom-command": return "Custom"
+        default: return "Local"
         }
     }
 
