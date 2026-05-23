@@ -24,6 +24,7 @@ def token_status(config: AppConfig, *, output_format: str = "text") -> str:
         _token_row("slack", "Slack Bot Token", bool(config.slack.bot_token), config.slack.bot_token, metadata, required=False),
         _token_row("openai", "OpenAI API Key", bool(config.openai.api_key), config.openai.api_key, metadata),
         _github_row(metadata),
+        _github_ssh_row(),
     ]
     if output_format == "json":
         return json.dumps(rows, ensure_ascii=False, indent=2)
@@ -90,6 +91,43 @@ def _github_row(metadata: dict[str, dict[str, Any]]) -> dict[str, Any]:
         "source": str(meta.get("source") or "gh auth"),
         "token_hint": "gh" if configured else "",
     }
+
+
+def _github_ssh_row() -> dict[str, Any]:
+    alias = "github-personal"
+    configured = False
+    detail = f"~/.ssh/config에 {alias} alias가 있으면 개인계정 push에 사용할 수 있습니다."
+    try:
+        result = subprocess.run(["ssh", "-G", alias], capture_output=True, text=True, timeout=5, check=False)
+        output = result.stdout.lower()
+        configured = result.returncode == 0 and "hostname github.com" in output
+        if configured:
+            identity = _first_ssh_value(result.stdout, "identityfile")
+            detail = f"{alias} SSH alias 설정됨" + (f": {identity}" if identity else "")
+        else:
+            detail = f"{alias} SSH alias 확인 실패"
+    except Exception as exc:
+        detail = f"SSH alias 확인 실패: {exc}"
+    return {
+        "id": "github_ssh_personal",
+        "name": "GitHub SSH Personal",
+        "configured": configured,
+        "required": False,
+        "status": "ok" if configured else "optional",
+        "detail": detail,
+        "expires_at": "",
+        "days_remaining": None,
+        "source": "~/.ssh/config",
+        "token_hint": alias if configured else "",
+    }
+
+
+def _first_ssh_value(output: str, key: str) -> str:
+    prefix = key.lower() + " "
+    for line in output.splitlines():
+        if line.lower().startswith(prefix):
+            return line[len(prefix) :].strip()
+    return ""
 
 
 def _token_metadata() -> dict[str, dict[str, Any]]:

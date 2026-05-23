@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from devpilot.app_state import read_state, write_state
+from devpilot.app_state import read_state, update_state
 from devpilot.config import AppConfig
 from devpilot.integrations.git_repos import configured_repositories
 
@@ -30,56 +30,62 @@ def link_issue_repository(config: AppConfig, issue_key: str, repo_path: str, *, 
     if not (repo / ".git").is_dir():
         raise RuntimeError(f"Git repository not found: {repo}")
 
-    state = read_state()
-    links = dict(state.get("issue_repositories") or {})
     updated_at = datetime.now(timezone.utc).isoformat()
-    current_links = _raw_repositories(links.get(normalized_key))
-    current_links = [
-        item
-        for item in current_links
-        if Path(str(item.get("repo_path") or "")).expanduser().resolve() != repo
-    ]
-    current_links.append({
-        "repo_path": str(repo),
-        "repo_name": repo.name,
-        "summary": summary.strip(),
-        "updated_at": updated_at,
-    })
-    links[normalized_key] = {
-        "summary": summary.strip(),
-        "updated_at": updated_at,
-        "repositories": current_links,
-    }
-    state["issue_repositories"] = links
-    write_state(state)
+    def mutate(state: dict) -> None:
+        links = dict(state.get("issue_repositories") or {})
+        current_links = _raw_repositories(links.get(normalized_key))
+        current_links = [
+            item
+            for item in current_links
+            if Path(str(item.get("repo_path") or "")).expanduser().resolve() != repo
+        ]
+        current_links.append({
+            "repo_path": str(repo),
+            "repo_name": repo.name,
+            "summary": summary.strip(),
+            "updated_at": updated_at,
+        })
+        links[normalized_key] = {
+            "summary": summary.strip(),
+            "updated_at": updated_at,
+            "repositories": current_links,
+        }
+        state["issue_repositories"] = links
+
+    update_state(mutate)
     return IssueRepositoryLink(normalized_key, repo, repo.name, summary.strip(), updated_at)
 
 
 def unlink_issue_repository(issue_key: str, repo_path: str | None = None) -> bool:
     normalized_key = issue_key.strip().upper()
-    state = read_state()
-    links = dict(state.get("issue_repositories") or {})
-    existed = normalized_key in links
-    if repo_path is None:
-        links.pop(normalized_key, None)
-    else:
-        target = Path(repo_path).expanduser().resolve()
-        remaining = [
-            item
-            for item in _raw_repositories(links.get(normalized_key))
-            if Path(str(item.get("repo_path") or "")).expanduser().resolve() != target
-        ]
-        existed = len(remaining) < len(_raw_repositories(links.get(normalized_key)))
-        if remaining:
-            links[normalized_key] = {
-                "summary": str((links.get(normalized_key) or {}).get("summary") or ""),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-                "repositories": remaining,
-            }
-        else:
+    existed = False
+
+    def mutate(state: dict) -> bool:
+        links = dict(state.get("issue_repositories") or {})
+        found = normalized_key in links
+        if repo_path is None:
             links.pop(normalized_key, None)
-    state["issue_repositories"] = links
-    write_state(state)
+        else:
+            target = Path(repo_path).expanduser().resolve()
+            original = _raw_repositories(links.get(normalized_key))
+            remaining = [
+                item
+                for item in original
+                if Path(str(item.get("repo_path") or "")).expanduser().resolve() != target
+            ]
+            found = len(remaining) < len(original)
+            if remaining:
+                links[normalized_key] = {
+                    "summary": str((links.get(normalized_key) or {}).get("summary") or ""),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                    "repositories": remaining,
+                }
+            else:
+                links.pop(normalized_key, None)
+        state["issue_repositories"] = links
+        return found
+
+    existed = bool(update_state(mutate))
     return existed
 
 

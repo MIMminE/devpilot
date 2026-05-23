@@ -1095,32 +1095,33 @@ struct WorkView: View {
             }
             .disabled(runner.isRunning)
         case .test:
-            Button {
-                Task {
-                    await runDashboardCommand(
-                        ["issue", "show", workflow.issueKey],
-                        title: "\(workflow.issueKey) 테스트 상태",
-                        running: "테스트 기록을 불러오는 중...",
-                        success: "테스트 기록 조회 완료",
-                        failure: "테스트 기록 조회 실패"
-                    )
+            if workflow.tests.isEmpty {
+                Button {
+                    Task { await recordWorkflowSmokeTest(workflow) }
+                } label: {
+                    Label("스모크 통과 기록", systemImage: "checkmark.seal")
                 }
-            } label: {
-                Label("테스트 기록 확인", systemImage: "checklist.checked")
+                .disabled(runner.isRunning)
+            } else {
+                Button {
+                    Task {
+                        await runDashboardCommand(
+                            ["issue", "show", workflow.issueKey],
+                            title: "\(workflow.issueKey) 테스트 상태",
+                            running: "테스트 기록을 불러오는 중...",
+                            success: "테스트 기록 조회 완료",
+                            failure: "테스트 기록 조회 실패"
+                        )
+                    }
+                } label: {
+                    Label("테스트 기록 확인", systemImage: "checklist.checked")
+                }
             }
         case .report:
             Button {
-                Task {
-                    await runDashboardCommand(
-                        ["issue", "report", workflow.issueKey],
-                        title: "\(workflow.issueKey) 보고",
-                        running: "보고서를 생성하는 중...",
-                        success: "보고서 생성 완료",
-                        failure: "보고서 생성 실패"
-                    )
-                }
+                Task { await recordWorkflowReport(workflow) }
             } label: {
-                Label("보고서 생성", systemImage: "doc.badge.plus")
+                Label(workflow.reports.isEmpty ? "보고 등록" : "보고 확인", systemImage: "doc.badge.plus")
             }
             .disabled(runner.isRunning)
         }
@@ -4358,6 +4359,36 @@ struct WorkView: View {
             success: "구현 완료로 표시했습니다",
             failure: "일감 상태 변경 실패"
         )
+        await loadIssueWorkflows(force: true)
+    }
+
+    private func recordWorkflowSmokeTest(_ workflow: IssueWorkflowRecord) async {
+        await runDashboardCommand(
+            ["issue", "record-test", workflow.issueKey, "--command", "사용자 승인 스모크 점검", "--result", "pass", "--summary", "앱에서 테스트 통과로 기록"],
+            title: "\(workflow.issueKey) 테스트 기록",
+            running: "테스트 결과를 기록하는 중...",
+            success: "테스트 통과를 기록했습니다",
+            failure: "테스트 기록 실패"
+        )
+        issueDirectorDrafts.removeValue(forKey: workflow.issueKey)
+        await loadIssueWorkflows(force: true)
+    }
+
+    private func recordWorkflowReport(_ workflow: IssueWorkflowRecord) async {
+        let summary: String
+        if let latest = workflow.reports.last, !latest.summary.isEmpty {
+            summary = latest.summary
+        } else {
+            summary = "\(workflow.issueKey) \(workflow.summary.isEmpty ? "작업" : workflow.summary) 진행 상황 보고"
+        }
+        await runDashboardCommand(
+            ["issue", "report", workflow.issueKey, "--summary", summary, "--next-action", "다음 단계 확인"],
+            title: "\(workflow.issueKey) 보고",
+            running: "작업 보고를 등록하는 중...",
+            success: "작업 보고를 등록했습니다",
+            failure: "작업 보고 등록 실패"
+        )
+        issueDirectorDrafts.removeValue(forKey: workflow.issueKey)
         await loadIssueWorkflows(force: true)
     }
 

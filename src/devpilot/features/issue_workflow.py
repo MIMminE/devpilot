@@ -6,9 +6,10 @@ import json
 from pathlib import Path
 import shlex
 import subprocess
+import time
 from zoneinfo import ZoneInfo
 
-from devpilot.app_state import app_data_dir, read_state, write_state
+from devpilot.app_state import app_data_dir, read_state, update_state
 from devpilot.config import AppConfig
 from devpilot.features.issue_repositories import issue_repository_link_groups
 from devpilot.integrations.codex_app_server import CodexThreadResult, create_codex_thread, send_codex_turn
@@ -79,34 +80,39 @@ def start_workflow(
 ) -> dict:
     key = _normalize_issue_key(issue_key)
     now = _now(config)
-    state = read_state()
-    workflows = _workflow_map(state)
-    workflow = _ensure_workflow(workflows, key, summary=summary, now=now)
-    workflow["summary"] = summary.strip() or workflow.get("summary", "")
-    workflow["project"] = _project_name(project, key, workflow)
-    workflow["status"] = _advance_status(str(workflow.get("status") or "assigned"), status)
-    workflow["updated_at"] = now
-    if repo_path:
-        _upsert_repository(workflow, repo_path, branch=branch)
-    _append_event(workflow, "workflow_started", "일감 워크플로우를 시작했습니다.", now, repo_path=repo_path)
-    state["issue_workflows"] = workflows
-    write_state(state)
+    def mutate(state: dict) -> dict:
+        workflows = _workflow_map(state)
+        workflow = _ensure_workflow(workflows, key, summary=summary, now=now, hydrate=False)
+        workflow["summary"] = summary.strip() or workflow.get("summary", "")
+        workflow["project"] = _project_name(project, key, workflow)
+        workflow["status"] = _advance_status(str(workflow.get("status") or "assigned"), status)
+        workflow["updated_at"] = now
+        if repo_path:
+            _upsert_repository(workflow, repo_path, branch=branch)
+        _append_event(workflow, "workflow_started", "일감 워크플로우를 시작했습니다.", now, repo_path=repo_path)
+        state["issue_workflows"] = workflows
+        return workflow
+
+    workflow = update_state(mutate)
     return workflow
 
 
 def record_branch_ready(config: AppConfig, issue_key: str, *, repo_path: str, branch: str, summary: str = "") -> dict:
     key = _normalize_issue_key(issue_key)
     now = _now(config)
-    state = read_state()
-    workflows = _workflow_map(state)
-    workflow = _ensure_workflow(workflows, key, summary=summary, now=now)
-    workflow["summary"] = summary.strip() or workflow.get("summary", "")
-    workflow["status"] = _advance_status(str(workflow.get("status") or "assigned"), "branch_ready")
-    workflow["updated_at"] = now
-    _upsert_repository(workflow, repo_path, branch=branch, branch_started_at=now)
-    _append_event(workflow, "branch_ready", f"작업 브랜치를 준비했습니다: {branch}", now, repo_path=repo_path)
-    state["issue_workflows"] = workflows
-    write_state(state)
+    def mutate(state: dict) -> dict:
+        workflows = _workflow_map(state)
+        workflow = _ensure_workflow(workflows, key, summary=summary, now=now, hydrate=False)
+        workflow["summary"] = summary.strip() or workflow.get("summary", "")
+        workflow["status"] = _advance_status(str(workflow.get("status") or "assigned"), "branch_ready")
+        workflow["updated_at"] = now
+        _upsert_repository(workflow, repo_path, branch=branch, branch_started_at=now)
+        _append_event(workflow, "branch_ready", f"작업 브랜치를 준비했습니다: {branch}", now, repo_path=repo_path)
+        state["issue_workflows"] = workflows
+        return workflow
+
+    workflow = update_state(mutate)
+    _sync_codex_event(config, key, workflow, "브랜치 준비", f"{repo_path}\nbranch: {branch}")
     return workflow
 
 
@@ -123,21 +129,24 @@ def update_workflow_status(
     _validate_status(status)
     key = _normalize_issue_key(issue_key)
     now = _now(config)
-    state = read_state()
-    workflows = _workflow_map(state)
-    workflow = _ensure_workflow(workflows, key, summary=summary, now=now)
-    workflow["summary"] = summary.strip() or workflow.get("summary", "")
-    workflow["status"] = status
-    workflow["updated_at"] = now
-    if note.strip():
-        _append_event(workflow, "status_note", note.strip(), now)
-    if next_action.strip():
-        _append_unique(workflow, "next_actions", next_action.strip())
-    if blocker.strip():
-        _append_unique(workflow, "blockers", blocker.strip())
-    _append_event(workflow, "status_changed", f"상태를 {STATUS_LABELS[status]}(으)로 변경했습니다.", now)
-    state["issue_workflows"] = workflows
-    write_state(state)
+    def mutate(state: dict) -> dict:
+        workflows = _workflow_map(state)
+        workflow = _ensure_workflow(workflows, key, summary=summary, now=now, hydrate=False)
+        workflow["summary"] = summary.strip() or workflow.get("summary", "")
+        workflow["status"] = status
+        workflow["updated_at"] = now
+        if note.strip():
+            _append_event(workflow, "status_note", note.strip(), now)
+        if next_action.strip():
+            _append_unique(workflow, "next_actions", next_action.strip())
+        if blocker.strip():
+            _append_unique(workflow, "blockers", blocker.strip())
+        _append_event(workflow, "status_changed", f"상태를 {STATUS_LABELS[status]}(으)로 변경했습니다.", now)
+        state["issue_workflows"] = workflows
+        return workflow
+
+    workflow = update_state(mutate)
+    _sync_codex_event(config, key, workflow, "상태 변경", f"{STATUS_LABELS[status]}\n{note or next_action or blocker}")
     return workflow
 
 
@@ -156,28 +165,31 @@ def record_test_result(
         raise RuntimeError("테스트 결과는 pass, fail, skip 중 하나여야 합니다.")
 
     now = _now(config)
-    state = read_state()
-    workflows = _workflow_map(state)
-    workflow = _ensure_workflow(workflows, key, summary="", now=now)
-    tests = [item for item in workflow.get("tests", []) if isinstance(item, dict)]
-    tests.append(
-        {
-            "command": command.strip() or "-",
-            "result": normalized_result,
-            "summary": summary.strip(),
-            "repo_path": str(Path(repo_path).expanduser().resolve()) if repo_path.strip() else "",
-            "recorded_at": now,
-        }
-    )
-    workflow["tests"] = tests[-50:]
-    if normalized_result == "pass":
-        workflow["status"] = _advance_status(str(workflow.get("status") or "assigned"), "tested")
-    elif normalized_result == "fail":
-        workflow["status"] = "blocked"
-    workflow["updated_at"] = now
-    _append_event(workflow, "test_recorded", f"테스트 결과를 기록했습니다: {normalized_result}", now, repo_path=repo_path or None)
-    state["issue_workflows"] = workflows
-    write_state(state)
+    def mutate(state: dict) -> dict:
+        workflows = _workflow_map(state)
+        workflow = _ensure_workflow(workflows, key, summary="", now=now, hydrate=False)
+        tests = [item for item in workflow.get("tests", []) if isinstance(item, dict)]
+        tests.append(
+            {
+                "command": command.strip() or "-",
+                "result": normalized_result,
+                "summary": summary.strip(),
+                "repo_path": str(Path(repo_path).expanduser().resolve()) if repo_path.strip() else "",
+                "recorded_at": now,
+            }
+        )
+        workflow["tests"] = tests[-50:]
+        if normalized_result == "pass":
+            workflow["status"] = _advance_status(str(workflow.get("status") or "assigned"), "tested")
+        elif normalized_result == "fail":
+            workflow["status"] = "blocked"
+        workflow["updated_at"] = now
+        _append_event(workflow, "test_recorded", f"테스트 결과를 기록했습니다: {normalized_result}", now, repo_path=repo_path or None)
+        state["issue_workflows"] = workflows
+        return workflow
+
+    workflow = update_state(mutate)
+    _sync_codex_event(config, key, workflow, "테스트 기록", f"{normalized_result} | {command}\n{summary}")
     return workflow
 
 
@@ -194,31 +206,33 @@ def record_analysis_request(
 ) -> dict:
     key = _normalize_issue_key(issue_key)
     now = _now(config)
-    state = read_state()
-    workflows = _workflow_map(state)
-    workflow = _ensure_workflow(workflows, key, summary=summary, now=now)
-    workflow["summary"] = summary.strip() or workflow.get("summary", "")
-    workflow["status"] = _advance_status(str(workflow.get("status") or "assigned"), "assigned")
-    analysis = {
-        "prompt_path": str(Path(prompt_path).expanduser()),
-        "requested_at": now,
-    }
-    if thread_id.strip():
-        analysis["thread_id"] = thread_id.strip()
-    if thread_name.strip():
-        analysis["thread_name"] = thread_name.strip()
-    if thread_path.strip():
-        analysis["thread_path"] = thread_path.strip()
-    if response_path.strip():
-        analysis["response_path"] = str(Path(response_path).expanduser())
-        analysis["completed_at"] = now
-    workflow["analysis"] = analysis
-    workflow["updated_at"] = now
-    _append_unique(workflow, "next_actions", "Codex 1차 분석 결과를 확인하고 작업 범위를 확정")
-    event_message = "Codex 1차 분석 스레드를 생성했습니다." if thread_id.strip() else "Codex 1차 분석 요청서를 준비했습니다."
-    _append_event(workflow, "analysis_requested", event_message, now)
-    state["issue_workflows"] = workflows
-    write_state(state)
+    def mutate(state: dict) -> dict:
+        workflows = _workflow_map(state)
+        workflow = _ensure_workflow(workflows, key, summary=summary, now=now, hydrate=False)
+        workflow["summary"] = summary.strip() or workflow.get("summary", "")
+        workflow["status"] = _advance_status(str(workflow.get("status") or "assigned"), "assigned")
+        analysis = {
+            "prompt_path": str(Path(prompt_path).expanduser()),
+            "requested_at": now,
+        }
+        if thread_id.strip():
+            analysis["thread_id"] = thread_id.strip()
+        if thread_name.strip():
+            analysis["thread_name"] = thread_name.strip()
+        if thread_path.strip():
+            analysis["thread_path"] = thread_path.strip()
+        if response_path.strip():
+            analysis["response_path"] = str(Path(response_path).expanduser())
+            analysis["completed_at"] = now
+        workflow["analysis"] = analysis
+        workflow["updated_at"] = now
+        _append_unique(workflow, "next_actions", "Codex 1차 분석 결과를 확인하고 작업 범위를 확정")
+        event_message = "Codex 1차 분석 스레드를 생성했습니다." if thread_id.strip() else "Codex 1차 분석 요청서를 준비했습니다."
+        _append_event(workflow, "analysis_requested", event_message, now)
+        state["issue_workflows"] = workflows
+        return workflow
+
+    workflow = update_state(mutate)
     return workflow
 
 
@@ -232,19 +246,22 @@ def record_work_report(
 ) -> dict:
     key = _normalize_issue_key(issue_key)
     now = _now(config)
-    state = read_state()
-    workflows = _workflow_map(state)
-    workflow = _ensure_workflow(workflows, key, summary="", now=now)
-    reports = [item for item in workflow.get("reports", []) if isinstance(item, dict)]
-    reports.append({"summary": summary.strip(), "recorded_at": now})
-    workflow["reports"] = reports[-50:]
-    workflow["status"] = "done" if done else _advance_status(str(workflow.get("status") or "assigned"), "reported")
-    workflow["updated_at"] = now
-    if next_action.strip():
-        _append_unique(workflow, "next_actions", next_action.strip())
-    _append_event(workflow, "report_recorded", "일감 보고를 기록했습니다.", now)
-    state["issue_workflows"] = workflows
-    write_state(state)
+    def mutate(state: dict) -> dict:
+        workflows = _workflow_map(state)
+        workflow = _ensure_workflow(workflows, key, summary="", now=now, hydrate=False)
+        reports = [item for item in workflow.get("reports", []) if isinstance(item, dict)]
+        reports.append({"summary": summary.strip(), "recorded_at": now})
+        workflow["reports"] = reports[-50:]
+        workflow["status"] = "done" if done else _advance_status(str(workflow.get("status") or "assigned"), "reported")
+        workflow["updated_at"] = now
+        if next_action.strip():
+            _append_unique(workflow, "next_actions", next_action.strip())
+        _append_event(workflow, "report_recorded", "일감 보고를 기록했습니다.", now)
+        state["issue_workflows"] = workflows
+        return workflow
+
+    workflow = update_state(mutate)
+    _sync_codex_event(config, key, workflow, "작업 보고", f"{summary}\n다음 행동: {next_action or '-'}")
     return workflow
 
 
@@ -259,6 +276,12 @@ def format_workflow(config: AppConfig, issue_key: str) -> str:
 def issue_director_briefing(config: AppConfig, issue_key: str, *, output_format: str = "text", provider: str = "auto", refresh: bool = False) -> str:
     key = _normalize_issue_key(issue_key)
     workflow = get_workflow(key)
+    if not workflow:
+        for _ in range(3):
+            time.sleep(0.12)
+            workflow = get_workflow(key)
+            if workflow:
+                break
     if not workflow:
         raise RuntimeError(f"{key} 일감 워크플로우 기록이 없습니다.")
     selected_provider = _director_provider(config, provider)
@@ -609,6 +632,35 @@ def _codex_director_prompt(payload: dict) -> str:
     )
 
 
+def _sync_codex_event(config: AppConfig, key: str, workflow: dict, title: str, detail: str) -> None:
+    thread_id = _existing_codex_thread_id(key)
+    if not thread_id:
+        return
+    provider = _director_provider(config, "auto")
+    if provider != "codex-local":
+        return
+    prompt = "\n".join(
+        [
+            f"# DevPilot 일감 이벤트: {key}",
+            "",
+            "이 메시지는 DevPilot 앱에서 같은 일감의 진행 상황을 Codex 스레드에 누적하기 위한 이벤트다.",
+            "응답은 짧게 확인만 해도 된다. 코드 변경은 하지 않는다.",
+            "",
+            f"- 이벤트: {title}",
+            f"- 현재 상태: {workflow.get('status') or '-'}",
+            f"- 진행도: {_progress_label(workflow)}",
+            "",
+            "## 상세",
+            detail.strip() or "-",
+        ]
+    )
+    workspace = app_data_dir() / "codex-workspaces" / key
+    try:
+        send_codex_turn(thread_id=thread_id, workspace_path=workspace, prompt=prompt, timeout_seconds=90)
+    except Exception:
+        return
+
+
 def _json_from_text(text: str) -> dict | None:
     value = text.strip()
     if value.startswith("```"):
@@ -691,18 +743,20 @@ def _custom_director_payload(config: AppConfig, payload: dict) -> dict:
 
 def _save_director_payload(config: AppConfig, key: str, payload: dict) -> None:
     now = _now(config)
-    state = read_state()
-    workflows = _workflow_map(state)
-    workflow = _ensure_workflow(workflows, key, summary=str(payload.get("summary") or ""), now=now)
-    workflow["director"] = {
-        "mode": payload.get("mode") or "local-director",
-        "generated_at": payload.get("generated_at") or now,
-        "payload": payload,
-    }
-    workflow["updated_at"] = now
-    _append_event(workflow, "director_generated", f"AI 작업 지휘관을 갱신했습니다: {payload.get('mode') or '-'}", now)
-    state["issue_workflows"] = workflows
-    write_state(state)
+    def mutate(state: dict) -> dict:
+        workflows = _workflow_map(state)
+        workflow = _ensure_workflow(workflows, key, summary=str(payload.get("summary") or ""), now=now, hydrate=False)
+        workflow["director"] = {
+            "mode": payload.get("mode") or "local-director",
+            "generated_at": payload.get("generated_at") or now,
+            "payload": payload,
+        }
+        workflow["updated_at"] = now
+        _append_event(workflow, "director_generated", f"AI 작업 지휘관을 갱신했습니다: {payload.get('mode') or '-'}", now)
+        state["issue_workflows"] = workflows
+        return workflow
+
+    update_state(mutate)
 
 
 def _format_director_payload(payload: dict) -> str:
@@ -1084,7 +1138,7 @@ def _active_workflows() -> list[tuple[str, dict]]:
     return sorted(rows, key=lambda item: str(item[1].get("updated_at") or ""), reverse=True)
 
 
-def _ensure_workflow(workflows: dict[str, dict], key: str, *, summary: str, now: str) -> dict:
+def _ensure_workflow(workflows: dict[str, dict], key: str, *, summary: str, now: str, hydrate: bool = True) -> dict:
     workflow = workflows.get(key)
     if not isinstance(workflow, dict):
         workflow = {
@@ -1102,7 +1156,8 @@ def _ensure_workflow(workflows: dict[str, dict], key: str, *, summary: str, now:
             "blockers": [],
         }
         workflows[key] = workflow
-    _hydrate_linked_repositories(key, workflow)
+    if hydrate:
+        _hydrate_linked_repositories(key, workflow)
     workflow["project"] = _project_name("", key, workflow)
     return workflow
 

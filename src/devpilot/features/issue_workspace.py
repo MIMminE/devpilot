@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import re
 
-from devpilot.app_state import app_data_dir, read_state, write_state
+from devpilot.app_state import app_data_dir, read_state, update_state
 from devpilot.config import AppConfig
 from devpilot.features.dev_assistant import branch_name
 from devpilot.features.issue_repositories import issue_repository_link_groups
@@ -55,9 +55,7 @@ def prepare_issue_workspace(
     repos_root.mkdir(parents=True, exist_ok=True)
     plan = [_repo_plan(config, key, repo, summary=summary, prefix=prefix, base_branch=base_branch, repos_root=repos_root) for repo in repos]
 
-    state = read_state()
-    workspaces = _workspace_map(state)
-    existing = workspaces.get(key)
+    existing = _workspace_map(read_state()).get(key)
     if existing and not force:
         return format_issue_workspace(key, output_format="text")
 
@@ -77,17 +75,20 @@ def prepare_issue_workspace(
 
     context_path = _write_context(workspace, key, summary=summary, repos=created)
     now = _now()
-    workspaces[key] = {
-        "issue_key": key,
-        "summary": summary.strip(),
-        "workspace_path": str(workspace),
-        "context_path": str(context_path),
-        "created_at": now,
-        "updated_at": now,
-        "repositories": created,
-    }
-    state[STATE_KEY] = workspaces
-    write_state(state)
+    def mutate(state: dict) -> None:
+        workspaces = _workspace_map(state)
+        workspaces[key] = {
+            "issue_key": key,
+            "summary": summary.strip(),
+            "workspace_path": str(workspace),
+            "context_path": str(context_path),
+            "created_at": now,
+            "updated_at": now,
+            "repositories": created,
+        }
+        state[STATE_KEY] = workspaces
+
+    update_state(mutate)
     start_workflow(config, key, summary=summary, status="branch_ready")
     return _format_prepared(key, workspace, context_path, created)
 
@@ -128,9 +129,12 @@ def cleanup_issue_workspace(issue_key: str, *, force: bool = False) -> str:
             raise RuntimeError(f"{repo.get('repo_name')} worktree 제거 실패: {detail}")
         removed.append(f"{repo.get('repo_name')}: 제거 완료")
 
-    workspaces.pop(key, None)
-    state[STATE_KEY] = workspaces
-    write_state(state)
+    def mutate(state: dict) -> None:
+        workspaces = _workspace_map(state)
+        workspaces.pop(key, None)
+        state[STATE_KEY] = workspaces
+
+    update_state(mutate)
     return "\n".join([f"{key} issue workspace 정리 완료", *[f"- {line}" for line in removed]])
 
 
