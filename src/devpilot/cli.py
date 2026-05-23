@@ -638,6 +638,7 @@ def main(argv: list[str] | None = None) -> int:
                 today_commit_count, today_commit_preview = _today_commit_status(config, repo.path)
                 base_commit_summary = ref_last_commit_summary(repo.path, snapshot_item.base_ref)
                 pull_request_summary, release_summary = _github_repo_overview(repo.path)
+                fork_date, branch_commit_count, branch_commit_preview = _branch_work_status(repo.path, snapshot_item.base_ref, snapshot_item.branch, snapshot_item.base_branch)
                 rows.append(
                     "\t".join(
                         [
@@ -659,6 +660,9 @@ def main(argv: list[str] | None = None) -> int:
                             auto_sync_message.replace("\t", " ").replace("\n", " "),
                             pull_request_summary.replace("\t", " ").replace("\n", " "),
                             release_summary.replace("\t", " ").replace("\n", " "),
+                            fork_date.replace("\t", " ").replace("\n", " "),
+                            str(branch_commit_count),
+                            branch_commit_preview.replace("\t", " ").replace("\n", " ¶ "),
                         ]
                     )
                 )
@@ -1159,6 +1163,22 @@ def _format_release_summary(value: object) -> str:
     name = str(value.get("name") or "").strip()
     label = tag if not name or name == tag else f"{tag} · {name}"
     return f"최신 릴리즈 {label}" + (f" · {published_at}" if published_at else "")
+
+
+def _branch_work_status(repo_path: Path, base_ref: str, branch: str, base_branch: str) -> tuple[str, int, str]:
+    if not base_ref or branch == "detached" or branch == base_branch:
+        return "", 0, ""
+    merge_base = git(repo_path, "merge-base", "HEAD", base_ref).strip()
+    if not merge_base:
+        return "", 0, ""
+    fork_date = git(repo_path, "show", "-s", "--format=%ci", merge_base).strip()
+    count_raw = git(repo_path, "rev-list", "--count", f"{base_ref}..HEAD").strip()
+    try:
+        count = int(count_raw)
+    except ValueError:
+        count = 0
+    preview = git(repo_path, "log", "--oneline", "--decorate=no", "--max-count=5", f"{base_ref}..HEAD")
+    return fork_date, count, preview
 
 
 def _is_dirty_rebase_skip(message: str) -> bool:

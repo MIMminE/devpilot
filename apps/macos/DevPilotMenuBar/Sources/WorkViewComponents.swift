@@ -452,6 +452,9 @@ struct RepositoryDashboardRow: View {
     let onCheckout: (String) -> Void
     let onOpenIDE: () -> Void
     let onOpenCodex: () -> Void
+    let onFetch: () -> Void
+    let onPull: () -> Void
+    let onRebase: () -> Void
     let visibleCommitRows: Int
 
     var body: some View {
@@ -477,6 +480,9 @@ struct RepositoryDashboardRow: View {
                     color: statusColor
                 )
             }
+
+            repositoryActionRail
+            branchAnalysisPanel
 
             VStack(alignment: .leading, spacing: 10) {
                 TodayCommitInlineView(repo: repo, visibleRows: visibleCommitRows, isPrivacyMasked: isPrivacyMasked)
@@ -519,6 +525,82 @@ struct RepositoryDashboardRow: View {
             .help("Codex 작업 지시")
             Spacer(minLength: 0)
         }
+    }
+
+    private var repositoryActionRail: some View {
+        HStack(spacing: 8) {
+            Button {
+                onFetch()
+            } label: {
+                Label("Fetch", systemImage: "arrow.clockwise")
+            }
+            .disabled(isRunning)
+
+            Button {
+                onPull()
+            } label: {
+                Label("Pull", systemImage: "arrow.down.circle")
+            }
+            .disabled(isRunning || repo.dirtyCount > 0 || !repo.canFastForward)
+
+            Button {
+                onRebase()
+            } label: {
+                Label("Rebase", systemImage: "arrow.triangle.merge")
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isRunning || repo.dirtyCount > 0 || !(repo.needsRebase || repo.needsBaseRebase))
+
+            Spacer()
+
+            Text(recommendedAction)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(statusColor)
+        }
+    }
+
+    private var branchAnalysisPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "point.topleft.down.curvedto.point.bottomright.up")
+                    .foregroundStyle(statusColor)
+                Text("브랜치 분석")
+                    .font(.caption.weight(.semibold))
+                Spacer()
+                RepoStatusBadge(text: repo.branchCommitCount > 0 ? "로컬 커밋 \(repo.branchCommitCount)" : "로컬 커밋 없음", color: repo.branchCommitCount > 0 ? .purple : .secondary)
+            }
+
+            HStack(spacing: 8) {
+                RepoSnapshotTile(
+                    title: "분기 시점",
+                    value: compactForkDate,
+                    detail: repo.baseRef.isEmpty ? "기준 ref 없음" : repo.baseRef,
+                    systemImage: "calendar.badge.clock",
+                    tint: repo.isWorkingBranch ? .blue : .secondary
+                )
+                RepoSnapshotTile(
+                    title: "작업 커밋",
+                    value: repo.branchCommitCount > 0 ? "\(repo.branchCommitCount)개" : "없음",
+                    detail: firstBranchCommitLine,
+                    systemImage: "number",
+                    tint: repo.branchCommitCount > 0 ? .purple : .secondary
+                )
+            }
+
+            if !displayBranchCommitLines.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    ForEach(displayBranchCommitLines.prefix(3), id: \.self) { line in
+                        Label(line, systemImage: "smallcircle.filled.circle")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.42))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     private var repoBadges: some View {
@@ -706,6 +788,43 @@ struct RepositoryDashboardRow: View {
             .components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty } ?? "자동 처리 결과가 있습니다."
+    }
+
+    private var recommendedAction: String {
+        if repo.dirtyCount > 0 {
+            return "commit/stash 먼저"
+        }
+        if repo.needsBaseRebase || repo.needsRebase {
+            return "Rebase 권장"
+        }
+        if repo.canFastForward {
+            return "Pull 가능"
+        }
+        if (repo.ahead ?? 0) > 0 {
+            return "Push 가능"
+        }
+        return "정리됨"
+    }
+
+    private var compactForkDate: String {
+        if isPrivacyMasked, repo.isWorkingBranch {
+            return "2026-05-01"
+        }
+        if repo.branchForkDate.count >= 10 {
+            return String(repo.branchForkDate.prefix(10))
+        }
+        return repo.isWorkingBranch ? "확인 불가" : "-"
+    }
+
+    private var firstBranchCommitLine: String {
+        displayBranchCommitLines.first ?? "기준 브랜치와 차이 없음"
+    }
+
+    private var displayBranchCommitLines: [String] {
+        if isPrivacyMasked, repo.branchCommitCount > 0 {
+            return ["abc1234 DEMO-123 작업 커밋", "def5678 테스트 보강"]
+        }
+        return repo.branchCommitLines.map(displayCommitLine)
     }
 
     private var shouldShowGuidance: Bool {

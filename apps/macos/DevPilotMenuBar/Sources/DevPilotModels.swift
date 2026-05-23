@@ -193,6 +193,9 @@ struct LocalRepositoryOption: Identifiable, Hashable, Sendable {
     let autoSyncMessage: String
     let pullRequestSummary: String
     let releaseSummary: String
+    let branchForkDate: String
+    let branchCommitCount: Int
+    let branchCommitPreview: String
 
     var id: String {
         path
@@ -276,6 +279,13 @@ struct LocalRepositoryOption: Identifiable, Hashable, Sendable {
     var isJiraWorkBranch: Bool {
         branch.range(of: #"[A-Z][A-Z0-9]+-\d+"#, options: [.regularExpression, .caseInsensitive]) != nil
             && branch != baseBranch
+    }
+
+    var branchCommitLines: [String] {
+        branchCommitPreview
+            .components(separatedBy: " ¶ ")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 }
 

@@ -1667,7 +1667,10 @@ final class DevPilotRunner: NSObject, ObservableObject, NSWindowDelegate {
                     baseCommitSummary: parts.count > 14 ? String(parts[14]) : "",
                     autoSyncMessage: parts.count > 15 ? String(parts[15]) : "",
                     pullRequestSummary: parts.count > 16 ? String(parts[16]) : "",
-                    releaseSummary: parts.count > 17 ? String(parts[17]) : ""
+                    releaseSummary: parts.count > 17 ? String(parts[17]) : "",
+                    branchForkDate: parts.count > 18 ? String(parts[18]) : "",
+                    branchCommitCount: parts.count > 19 ? Int(String(parts[19])) ?? 0 : 0,
+                    branchCommitPreview: parts.count > 20 ? String(parts[20]) : ""
                 )
             }
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }

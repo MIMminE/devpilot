@@ -2556,6 +2556,15 @@ struct WorkView: View {
                                 onOpenCodex: {
                                     runner.openRepoCodexTaskWindow(repo: repo)
                                 },
+                                onFetch: {
+                                    Task { await run(repo, mode: "fetch") }
+                                },
+                                onPull: {
+                                    Task { await run(repo, mode: "pull") }
+                                },
+                                onRebase: {
+                                    Task { await run(repo, mode: "rebase") }
+                                },
                                 visibleCommitRows: workCommitPreviewRows
                             )
                             .opacity(draggingRepositoryPath == repo.path ? 0.58 : 1)
