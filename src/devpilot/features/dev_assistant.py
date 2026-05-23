@@ -47,7 +47,7 @@ def morning_briefing(config: AppConfig, *, send_slack: bool, dry_run: bool = Fal
         calendar_summary(config),
     ]
     message = "\n".join(sections)
-    if send_slack and not dry_run:
+    if send_slack and config.features.notifications and not dry_run:
         SlackClient(config.slack, destination="morning_briefing").send(message, blocks=_morning_blocks(config, message, dry_run=dry_run))
     return message
 
@@ -79,7 +79,7 @@ def evening_check(config: AppConfig, *, send_slack: bool, dry_run: bool = False)
         audit_jira_keys(config),
     ]
     message = "\n".join(sections)
-    if send_slack and not dry_run:
+    if send_slack and config.features.notifications and not dry_run:
         SlackClient(config.slack, destination="evening_check").send(message, blocks=_routine_blocks("퇴근 체크", message))
     return message
 

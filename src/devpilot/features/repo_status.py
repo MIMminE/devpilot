@@ -36,7 +36,7 @@ def summarize_repositories(config: AppConfig, *, send_slack: bool, dry_run: bool
     message = format_repo_status(statuses)
     if dry_run:
         return "[dry-run]\n" + message
-    if send_slack:
+    if send_slack and config.features.notifications:
         SlackClient(config.slack, destination="git_status").send(message, blocks=repo_status_blocks(statuses))
     return message
 

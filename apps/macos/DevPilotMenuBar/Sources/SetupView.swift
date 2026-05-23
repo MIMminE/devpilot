@@ -276,66 +276,73 @@ struct SetupView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                SettingsSecureField(title: "Bot Token", placeholder: "xoxb-...", text: $settings.slackBotToken)
+                Toggle("Slack 연동 사용", isOn: $settings.slackIntegrationEnabled)
+                    .font(.headline)
 
-                GuideBox(
-                    title: "Slack 앱 연결 안내",
-                    lines: [
-                        "Slack App을 만들고 Bot Token Scopes에 chat:write, channels:read를 추가합니다.",
-                        "비공개 채널까지 선택하려면 groups:read도 추가한 뒤 앱을 워크스페이스에 설치합니다.",
-                        "설치 후 Bot User OAuth Token 값을 여기에 입력하면 채널 목록을 불러올 수 있습니다."
-                    ],
-                    buttons: [
-                        GuideButton(title: "Slack 앱 관리 열기", url: "https://api.slack.com/apps"),
-                        GuideButton(title: "chat:write 권한 보기", url: "https://api.slack.com/scopes/chat%3Awrite")
-                    ],
-                    runner: runner
-                )
+                Group {
+                    SettingsSecureField(title: "Bot Token", placeholder: "xoxb-...", text: $settings.slackBotToken)
 
-                HStack {
-                    Button(isLoadingSlackChannels ? "불러오는 중..." : "채널 목록 불러오기") {
-                        isLoadingSlackChannels = true
-                        Task {
-                            slackChannels = await runner.loadSlackChannels(settings: settings)
-                            isLoadingSlackChannels = false
+                    GuideBox(
+                        title: "Slack 앱 연결 안내",
+                        lines: [
+                            "Slack App을 만들고 Bot Token Scopes에 chat:write, channels:read를 추가합니다.",
+                            "비공개 채널까지 선택하려면 groups:read도 추가한 뒤 앱을 워크스페이스에 설치합니다.",
+                            "설치 후 Bot User OAuth Token 값을 여기에 입력하면 채널 목록을 불러올 수 있습니다."
+                        ],
+                        buttons: [
+                            GuideButton(title: "Slack 앱 관리 열기", url: "https://api.slack.com/apps"),
+                            GuideButton(title: "chat:write 권한 보기", url: "https://api.slack.com/scopes/chat%3Awrite")
+                        ],
+                        runner: runner
+                    )
+
+                    HStack {
+                        Button(isLoadingSlackChannels ? "불러오는 중..." : "채널 목록 불러오기") {
+                            isLoadingSlackChannels = true
+                            Task {
+                                slackChannels = await runner.loadSlackChannels(settings: settings)
+                                isLoadingSlackChannels = false
+                            }
                         }
-                    }
-                    .disabled(runner.isRunning || settings.slackBotToken.isEmpty || isLoadingSlackChannels)
+                        .disabled(runner.isRunning || settings.slackBotToken.isEmpty || isLoadingSlackChannels)
 
-                    if isLoadingSlackChannels {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text("Slack에서 채널을 확인하는 중")
+                        if isLoadingSlackChannels {
+                            ProgressView()
+                                .controlSize(.small)
+                            Text("Slack에서 채널을 확인하는 중")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Text("Slack App 권한: chat:write, channels:read, groups:read")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+
+                        Spacer()
                     }
 
-                    Text("Slack App 권한: chat:write, channels:read, groups:read")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    Spacer()
+                    if slackChannels.isEmpty {
+                        ChannelIdField(title: "기본", text: $settings.slackDefaultChannelID)
+                        ChannelIdField(title: "연결 테스트", text: $settings.slackTestChannelID)
+                        ChannelIdField(title: "출근 브리핑", text: $settings.slackMorningChannelID)
+                        ChannelIdField(title: "퇴근 체크", text: $settings.slackEveningChannelID)
+                        ChannelIdField(title: "Jira 아침 브리핑", text: $settings.slackJiraChannelID)
+                        ChannelIdField(title: "Git 오늘 한 일 보고", text: $settings.slackGitReportChannelID)
+                        ChannelIdField(title: "Git 상태 점검", text: $settings.slackGitStatusChannelID)
+                        ChannelIdField(title: "긴급 알림", text: $settings.slackAlertsChannelID)
+                    } else {
+                        ChannelPicker(title: "기본", channels: slackChannels, selection: $settings.slackDefaultChannelID)
+                        ChannelPicker(title: "연결 테스트", channels: slackChannels, selection: $settings.slackTestChannelID)
+                        ChannelPicker(title: "출근 브리핑", channels: slackChannels, selection: $settings.slackMorningChannelID)
+                        ChannelPicker(title: "퇴근 체크", channels: slackChannels, selection: $settings.slackEveningChannelID)
+                        ChannelPicker(title: "Jira 아침 브리핑", channels: slackChannels, selection: $settings.slackJiraChannelID)
+                        ChannelPicker(title: "Git 오늘 한 일 보고", channels: slackChannels, selection: $settings.slackGitReportChannelID)
+                        ChannelPicker(title: "Git 상태 점검", channels: slackChannels, selection: $settings.slackGitStatusChannelID)
+                        ChannelPicker(title: "긴급 알림", channels: slackChannels, selection: $settings.slackAlertsChannelID)
+                    }
                 }
-
-                if slackChannels.isEmpty {
-                    ChannelIdField(title: "기본", text: $settings.slackDefaultChannelID)
-                    ChannelIdField(title: "연결 테스트", text: $settings.slackTestChannelID)
-                    ChannelIdField(title: "출근 브리핑", text: $settings.slackMorningChannelID)
-                    ChannelIdField(title: "퇴근 체크", text: $settings.slackEveningChannelID)
-                    ChannelIdField(title: "Jira 아침 브리핑", text: $settings.slackJiraChannelID)
-                    ChannelIdField(title: "Git 오늘 한 일 보고", text: $settings.slackGitReportChannelID)
-                    ChannelIdField(title: "Git 상태 점검", text: $settings.slackGitStatusChannelID)
-                    ChannelIdField(title: "긴급 알림", text: $settings.slackAlertsChannelID)
-                } else {
-                    ChannelPicker(title: "기본", channels: slackChannels, selection: $settings.slackDefaultChannelID)
-                    ChannelPicker(title: "연결 테스트", channels: slackChannels, selection: $settings.slackTestChannelID)
-                    ChannelPicker(title: "출근 브리핑", channels: slackChannels, selection: $settings.slackMorningChannelID)
-                    ChannelPicker(title: "퇴근 체크", channels: slackChannels, selection: $settings.slackEveningChannelID)
-                    ChannelPicker(title: "Jira 아침 브리핑", channels: slackChannels, selection: $settings.slackJiraChannelID)
-                    ChannelPicker(title: "Git 오늘 한 일 보고", channels: slackChannels, selection: $settings.slackGitReportChannelID)
-                    ChannelPicker(title: "Git 상태 점검", channels: slackChannels, selection: $settings.slackGitStatusChannelID)
-                    ChannelPicker(title: "긴급 알림", channels: slackChannels, selection: $settings.slackAlertsChannelID)
-                }
+                .disabled(!settings.slackIntegrationEnabled)
+                .opacity(settings.slackIntegrationEnabled ? 1 : 0.52)
             }
             .padding(.vertical, 6)
         }
@@ -349,24 +356,31 @@ struct SetupView: View {
             isExpanded: $isJiraExpanded
         ) {
             VStack(alignment: .leading, spacing: 10) {
-                SettingsTextField(title: "기본 URL", placeholder: "https://start-today.atlassian.net", text: $settings.jiraBaseURL)
-                SettingsTextField(title: "이메일", placeholder: "you@example.com", text: $settings.jiraEmail)
-                SettingsSecureField(title: "API Token", placeholder: "Jira API 토큰", text: $settings.jiraApiToken)
-                SettingsTextField(title: "기본 프로젝트", placeholder: "LMS", text: $settings.jiraDefaultProject)
+                Toggle("Jira 연동 사용", isOn: $settings.jiraIntegrationEnabled)
+                    .font(.headline)
 
-                GuideBox(
-                    title: "Jira API 토큰 안내",
-                    lines: [
-                        "Jira Cloud는 계정 이메일과 API 토큰으로 REST API를 호출합니다.",
-                        "토큰을 만든 뒤 API Token 입력칸에 붙여넣고, 기본 프로젝트에는 LMS 같은 프로젝트 키를 입력합니다.",
-                        "토큰은 다시 볼 수 없으니 저장 후 분실하면 새로 만들어야 합니다."
-                    ],
-                    buttons: [
-                        GuideButton(title: "Atlassian 토큰 만들기", url: "https://id.atlassian.com/manage-profile/security/api-tokens"),
-                        GuideButton(title: "공식 안내 보기", url: "https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/")
-                    ],
-                    runner: runner
-                )
+                Group {
+                    SettingsTextField(title: "기본 URL", placeholder: "https://start-today.atlassian.net", text: $settings.jiraBaseURL)
+                    SettingsTextField(title: "이메일", placeholder: "you@example.com", text: $settings.jiraEmail)
+                    SettingsSecureField(title: "API Token", placeholder: "Jira API 토큰", text: $settings.jiraApiToken)
+                    SettingsTextField(title: "기본 프로젝트", placeholder: "LMS", text: $settings.jiraDefaultProject)
+
+                    GuideBox(
+                        title: "Jira API 토큰 안내",
+                        lines: [
+                            "Jira Cloud는 계정 이메일과 API 토큰으로 REST API를 호출합니다.",
+                            "토큰을 만든 뒤 API Token 입력칸에 붙여넣고, 기본 프로젝트에는 LMS 같은 프로젝트 키를 입력합니다.",
+                            "토큰은 다시 볼 수 없으니 저장 후 분실하면 새로 만들어야 합니다."
+                        ],
+                        buttons: [
+                            GuideButton(title: "Atlassian 토큰 만들기", url: "https://id.atlassian.com/manage-profile/security/api-tokens"),
+                            GuideButton(title: "공식 안내 보기", url: "https://support.atlassian.com/atlassian-account/docs/manage-api-tokens-for-your-atlassian-account/")
+                        ],
+                        runner: runner
+                    )
+                }
+                .disabled(!settings.jiraIntegrationEnabled)
+                .opacity(settings.jiraIntegrationEnabled ? 1 : 0.52)
             }
             .padding(.vertical, 6)
         }
@@ -716,11 +730,13 @@ struct SetupView: View {
 
                 ScheduleRow(
                     title: "Jira 아침 브리핑",
-                    featureEnabled: $settings.jiraDailyEnabled,
+                    featureEnabled: $settings.jiraIntegrationEnabled,
                     scheduleEnabled: $settings.jiraDailyScheduleEnabled,
                     time: $settings.jiraDailyScheduleTime,
                     catchUp: $settings.jiraDailyCatchUp,
-                    placeholder: "09:00"
+                    placeholder: "09:00",
+                    showsFeatureToggle: false,
+                    availabilityLabel: settings.jiraIntegrationEnabled ? "" : "Jira 연동을 켜면 사용할 수 있습니다."
                 )
 
                 ScheduleRow(

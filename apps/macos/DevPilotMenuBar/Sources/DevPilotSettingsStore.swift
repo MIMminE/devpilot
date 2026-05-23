@@ -7,6 +7,7 @@ struct DevPilotSettingsStore {
     func load() -> DevPilotSettings {
         DevPilotSettings(
             slackMode: "oauth",
+            slackIntegrationEnabled: readBoolConfigValue(section: "feature_groups", key: "notifications", defaultValue: true),
             slackBotToken: readConfigValue(section: "slack", key: "bot_token"),
             slackDefaultChannelID: readConfigValue(section: "slack.channels", key: "default"),
             slackTestChannelID: readConfigValue(section: "slack.channels", key: "test"),
@@ -16,6 +17,7 @@ struct DevPilotSettingsStore {
             slackGitReportChannelID: readConfigValue(section: "slack.channels", key: "git_report"),
             slackGitStatusChannelID: readConfigValue(section: "slack.channels", key: "git_status"),
             slackAlertsChannelID: readConfigValue(section: "slack.channels", key: "alerts"),
+            jiraIntegrationEnabled: readBoolConfigValue(section: "feature_groups", key: "jira", defaultValue: true),
             jiraBaseURL: readConfigValue(section: "jira", key: "base_url"),
             jiraEmail: readConfigValue(section: "jira", key: "email"),
             jiraApiToken: readConfigValue(section: "jira", key: "api_token"),
@@ -179,12 +181,12 @@ struct DevPilotSettingsStore {
             baseBranches: settings.repoProjectBaseBranches
         )
         text = replaceConfigValue(text, section: "openai", key: "api_key", value: settings.openAIKey)
-        text = replaceConfigBoolValue(text, section: "feature_groups", key: "jira", value: settings.jiraDailyEnabled)
+        text = replaceConfigBoolValue(text, section: "feature_groups", key: "jira", value: settings.jiraIntegrationEnabled)
         text = replaceConfigBoolValue(text, section: "feature_groups", key: "git", value: settings.gitReportEnabled || settings.gitStatusEnabled)
         text = replaceConfigBoolValue(text, section: "feature_groups", key: "routines", value: true)
         text = replaceConfigBoolValue(text, section: "feature_groups", key: "ai", value: true)
         text = replaceConfigBoolValue(text, section: "feature_groups", key: "dev_tools", value: true)
-        text = replaceConfigBoolValue(text, section: "feature_groups", key: "notifications", value: true)
+        text = replaceConfigBoolValue(text, section: "feature_groups", key: "notifications", value: settings.slackIntegrationEnabled)
         text = replaceConfigBoolValue(text, section: "schedules.jira_daily", key: "enabled", value: settings.jiraDailyScheduleEnabled)
         text = replaceConfigValue(text, section: "schedules.jira_daily", key: "time", value: settings.jiraDailyScheduleTimeOrDefault)
         text = replaceConfigBoolValue(text, section: "schedules.jira_daily", key: "catch_up_if_missed", value: settings.jiraDailyCatchUp)

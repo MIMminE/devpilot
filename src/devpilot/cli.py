@@ -766,6 +766,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.area == "repo" and args.command == "send-report-text":
         text = Path(args.text_file).expanduser().read_text(encoding="utf-8")
+        if not config.features.notifications:
+            print("Slack 연동이 꺼져 있어 앱 기록만 사용합니다.")
+            return 0
         SlackClient(config.slack, destination="git_report").send(text, blocks=[section_block(text)])
         print("보고서를 Slack으로 전송했습니다.")
         return 0

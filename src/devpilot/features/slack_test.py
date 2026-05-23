@@ -8,6 +8,8 @@ from devpilot.integrations.slack import SlackClient, context_block, header_block
 
 
 def send_test_message(config: AppConfig, *, dry_run: bool, destination: str = "test") -> str:
+    if not config.features.notifications:
+        return "Slack 연동이 꺼져 있습니다."
     now = datetime.now(ZoneInfo(config.general.timezone)).strftime("%Y-%m-%d %H:%M:%S")
     message = f"DevPilot Slack connection test ({destination}) - {now}"
     blocks = [

@@ -345,11 +345,26 @@ struct ScheduleRow: View {
     @Binding var time: String
     @Binding var catchUp: Bool
     let placeholder: String
+    var showsFeatureToggle = true
+    var availabilityLabel = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Toggle(title, isOn: $featureEnabled)
-                .font(.headline)
+            if showsFeatureToggle {
+                Toggle(title, isOn: $featureEnabled)
+                    .font(.headline)
+            } else {
+                HStack {
+                    Text(title)
+                        .font(.headline)
+                    Spacer()
+                    if !availabilityLabel.isEmpty {
+                        Text(availabilityLabel)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
 
             HStack(spacing: 12) {
                 Toggle("자동 전송", isOn: $scheduleEnabled)

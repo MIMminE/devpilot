@@ -85,6 +85,7 @@ struct DevPilotProfile: Identifiable, Hashable, Sendable {
 
 struct DevPilotSettings {
     var slackMode: String
+    var slackIntegrationEnabled: Bool
     var slackBotToken: String
     var slackDefaultChannelID: String
     var slackTestChannelID: String
@@ -94,6 +95,7 @@ struct DevPilotSettings {
     var slackGitReportChannelID: String
     var slackGitStatusChannelID: String
     var slackAlertsChannelID: String
+    var jiraIntegrationEnabled: Bool
     var jiraBaseURL: String
     var jiraEmail: String
     var jiraApiToken: String
@@ -132,14 +134,15 @@ struct DevPilotSettings {
     }
 
     var isReadyForBasicTests: Bool {
-        jiraBaseURL.hasPrefix("https://")
+        jiraIntegrationEnabled
+            && jiraBaseURL.hasPrefix("https://")
             && jiraEmail.contains("@")
             && !jiraApiToken.isEmpty
             && !jiraDefaultProject.isEmpty
     }
 
     var isReadyForSlackTest: Bool {
-        !slackBotToken.isEmpty && !testChannelID.isEmpty
+        slackIntegrationEnabled && !slackBotToken.isEmpty && !testChannelID.isEmpty
     }
 
     private var slackJiraReady: Bool {

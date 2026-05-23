@@ -33,10 +33,12 @@ def submit_report(
     }
 
     slack_message = ""
-    if send_slack:
+    if send_slack and config.features.notifications:
         SlackClient(config.slack, destination="git_report").send(body, blocks=[section_block(body)])
         submission["slack_sent"] = True
         slack_message = "Slack 전송 완료"
+    elif send_slack:
+        slack_message = "Slack 연동 꺼짐"
     else:
         slack_message = "Slack 전송 안 함"
 

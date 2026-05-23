@@ -96,7 +96,7 @@ def report(
     if dry_run:
         return "[dry-run]\n" + final_report
 
-    if send_slack:
+    if send_slack and config.features.notifications:
         SlackClient(config.slack, destination="git_report").send(final_report, blocks=_report_blocks(final_report, len(entries)))
 
     return final_report
