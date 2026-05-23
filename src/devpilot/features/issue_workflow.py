@@ -11,8 +11,18 @@ from zoneinfo import ZoneInfo
 from devpilot.app_state import app_data_dir, read_state, write_state
 from devpilot.config import AppConfig
 from devpilot.features.issue_repositories import issue_repository_link_groups
-from devpilot.integrations.codex_app_server import create_codex_thread
-from devpilot.integrations.git_repos import ahead_behind, current_branch, status_porcelain
+from devpilot.integrations.codex_app_server import CodexThreadResult, create_codex_thread, send_codex_turn
+from devpilot.integrations.git_repos import (
+    ahead_behind,
+    changed_files,
+    current_branch,
+    git,
+    has_issue_key,
+    is_protected_workflow_branch,
+    snapshot_repo,
+    staged_files,
+    status_porcelain,
+)
 from devpilot.integrations.openai_report import generate_text
 
 
@@ -405,7 +415,8 @@ def _director_payload(config: AppConfig, key: str, workflow: dict, *, provider: 
     summary = str(workflow.get("summary") or "").strip()
     issue_type = _director_issue_type(summary, blockers)
     branch_name = _director_branch_name(key, summary)
-    risks = _director_risks(repos, repo_states, tests, blockers)
+    work_trace, convention_warnings = _director_work_trace(config, key, workflow)
+    risks = _director_risks(repos, repo_states, tests, blockers, convention_warnings)
 
     sections = [
         {
@@ -448,6 +459,20 @@ def _director_payload(config: AppConfig, key: str, workflow: dict, *, provider: 
             "items": _director_test_items(tests, repo_states),
         },
         {
+            "id": "trace",
+            "title": "작업 추적",
+            "status": "확인" if work_trace else "대기",
+            "body": "연결 repository의 브랜치, 변경 파일, 커밋을 일감 기준으로 추적합니다.",
+            "items": _director_trace_items(work_trace),
+        },
+        {
+            "id": "conventions",
+            "title": "컨벤션 점검",
+            "status": "경고" if convention_warnings else "정상",
+            "body": "브랜치명, 커밋 메시지, 테스트/보고 기록이 사전 규칙에 맞는지 점검합니다.",
+            "items": convention_warnings or ["현재 컨벤션 경고가 없습니다."],
+        },
+        {
             "id": "report",
             "title": "보고 초안",
             "status": "작성됨" if reports else "초안",
@@ -464,6 +489,8 @@ def _director_payload(config: AppConfig, key: str, workflow: dict, *, provider: 
         "current_focus": _director_focus(status, workflow, repos, tests, reports),
         "next_approval": _director_next_approval(workflow, repos, tests, reports),
         "risks": risks,
+        "work_trace": work_trace,
+        "convention_warnings": convention_warnings,
         "sections": sections,
         "generated_at": _now(config),
         "mode": provider,
@@ -492,12 +519,27 @@ def _codex_director_payload(key: str, payload: dict) -> dict:
     workspace.mkdir(parents=True, exist_ok=True)
     (workspace / f"{key}-director.md").write_text(prompt.rstrip() + "\n", encoding="utf-8")
     thread_name = f"[{key}] AI 작업 지휘관"
+    existing_thread_id = _existing_codex_thread_id(key)
     try:
-        thread = create_codex_thread(workspace_path=workspace, thread_name=thread_name, prompt=prompt, timeout_seconds=180)
+        if existing_thread_id:
+            thread = send_codex_turn(thread_id=existing_thread_id, workspace_path=workspace, prompt=prompt, timeout_seconds=180)
+            if not thread.thread_name:
+                thread = _codex_thread_result_with_name(thread, thread_name)
+        else:
+            thread = create_codex_thread(workspace_path=workspace, thread_name=thread_name, prompt=prompt, timeout_seconds=180)
     except Exception as exc:
-        payload["provider_note"] = f"Codex Local 실행 실패: {exc}"
-        payload["prompt_path"] = str(prompt_path)
-        return payload
+        if existing_thread_id:
+            try:
+                thread = create_codex_thread(workspace_path=workspace, thread_name=thread_name, prompt=prompt, timeout_seconds=180)
+                payload["provider_note"] = f"기존 Codex 스레드 재사용 실패 후 새 스레드를 생성했습니다: {exc}"
+            except Exception as fallback_exc:
+                payload["provider_note"] = f"Codex Local 실행 실패: {fallback_exc}"
+                payload["prompt_path"] = str(prompt_path)
+                return payload
+        else:
+            payload["provider_note"] = f"Codex Local 실행 실패: {exc}"
+            payload["prompt_path"] = str(prompt_path)
+            return payload
 
     response_path = directory / f"{key.lower()}-director-response.md"
     response_path.write_text(thread.response.rstrip() + "\n", encoding="utf-8")
@@ -523,6 +565,27 @@ def _codex_director_payload(key: str, payload: dict) -> dict:
     return payload
 
 
+def _existing_codex_thread_id(key: str) -> str:
+    workflow = get_workflow(key) or {}
+    director = workflow.get("director") if isinstance(workflow.get("director"), dict) else {}
+    payload = director.get("payload") if isinstance(director.get("payload"), dict) else {}
+    for source in (payload, workflow.get("analysis") if isinstance(workflow.get("analysis"), dict) else {}):
+        thread_id = str(source.get("codex_thread_id") or source.get("thread_id") or "").strip()
+        if thread_id:
+            return thread_id
+    return ""
+
+
+def _codex_thread_result_with_name(thread: CodexThreadResult, thread_name: str) -> CodexThreadResult:
+    return CodexThreadResult(
+        thread_id=thread.thread_id,
+        thread_name=thread_name,
+        thread_path=thread.thread_path,
+        cwd=thread.cwd,
+        response=thread.response,
+    )
+
+
 def _codex_director_prompt(payload: dict) -> str:
     return "\n".join(
         [
@@ -535,6 +598,7 @@ def _codex_director_prompt(payload: dict) -> str:
             "- 반드시 JSON 객체만 반환한다.",
             "- 기존 schema를 유지한다: issue_key, project, summary, issue_type, progress, current_focus, next_approval, risks, sections, generated_at, mode.",
             "- sections는 분석, 작업 계획, Repository 후보, 브랜치 전략, 테스트 추천, 보고 초안을 유지한다.",
+            "- 입력 JSON에 작업 추적과 컨벤션 점검 섹션이 있으면 유지하고, 브랜치/변경 파일/커밋/경고를 반영한다.",
             "- 사실과 추정을 구분하고, 모르는 내용은 단정하지 않는다.",
             "- 실제 코드 변경은 하지 않는다.",
             "",
@@ -744,6 +808,118 @@ def _director_test_items(tests: list[dict], repo_states: list[WorkflowRepoState]
     return items
 
 
+def _director_work_trace(config: AppConfig, key: str, workflow: dict) -> tuple[list[dict], list[str]]:
+    traces: list[dict] = []
+    warnings: list[str] = []
+    tests = [item for item in workflow.get("tests", []) if isinstance(item, dict)]
+    reports = [item for item in workflow.get("reports", []) if isinstance(item, dict)]
+    repos = _repository_items(workflow)
+    if not tests:
+        warnings.append("테스트 결과가 아직 기록되지 않았습니다.")
+    if not reports:
+        warnings.append("작업 보고가 아직 등록되지 않았습니다.")
+    for item in repos:
+        repo = Path(str(item.get("repo_path") or "")).expanduser().resolve()
+        if not (repo / ".git").exists():
+            traces.append(
+                {
+                    "repo_name": str(item.get("repo_name") or repo.name),
+                    "repo_path": str(repo),
+                    "branch": str(item.get("branch") or ""),
+                    "changed_files": [],
+                    "staged_files": [],
+                    "commits": [],
+                    "warnings": ["Git repository 상태를 확인할 수 없습니다."],
+                }
+            )
+            warnings.append(f"{item.get('repo_name') or repo.name}: Git repository 상태 확인 불가")
+            continue
+        try:
+            snapshot = snapshot_repo(repo)
+            branch = current_branch(repo)
+            dirty = changed_files(repo)
+            staged = staged_files(repo)
+            commits = _director_branch_commits(repo, snapshot.base_ref)
+        except RuntimeError as exc:
+            traces.append(
+                {
+                    "repo_name": str(item.get("repo_name") or repo.name),
+                    "repo_path": str(repo),
+                    "branch": str(item.get("branch") or ""),
+                    "changed_files": [],
+                    "staged_files": [],
+                    "commits": [],
+                    "warnings": [f"Git 상태 확인 실패: {exc}"],
+                }
+            )
+            warnings.append(f"{item.get('repo_name') or repo.name}: Git 상태 확인 실패")
+            continue
+        repo_warnings = _director_repo_warnings(key, repo.name, branch, commits)
+        warnings.extend(repo_warnings)
+        traces.append(
+            {
+                "repo_name": repo.name,
+                "repo_path": str(repo),
+                "branch": branch,
+                "base_branch": snapshot.base_branch,
+                "base_ref": snapshot.base_ref,
+                "changed_files": dirty[:50],
+                "staged_files": staged[:50],
+                "commits": commits[:30],
+                "ahead": snapshot.base_ahead,
+                "behind": snapshot.base_behind,
+                "warnings": repo_warnings,
+            }
+        )
+    return traces, _unique(warnings)[:30]
+
+
+def _director_branch_commits(repo: Path, base_ref: str) -> list[str]:
+    args = ["log", "--max-count=30", "--pretty=format:%h | %s"]
+    if base_ref:
+        args.insert(1, f"{base_ref}..HEAD")
+    try:
+        output = git(repo, *args)
+    except RuntimeError:
+        output = git(repo, "log", "--max-count=10", "--pretty=format:%h | %s")
+    return [line for line in output.splitlines() if line.strip()]
+
+
+def _director_repo_warnings(issue_key: str, repo_name: str, branch: str, commits: list[str]) -> list[str]:
+    warnings: list[str] = []
+    if is_protected_workflow_branch(branch):
+        warnings.append(f"{repo_name}: 보호 브랜치 `{branch}`에서 작업 중입니다.")
+    if branch and issue_key.upper() not in branch.upper():
+        warnings.append(f"{repo_name}: 브랜치명에 일감 키 {issue_key}가 없습니다.")
+    elif branch and not has_issue_key(branch):
+        warnings.append(f"{repo_name}: 브랜치명에 일감 키 형식이 없습니다.")
+    for commit in commits[:12]:
+        subject = commit.split(" | ", 1)[-1].strip()
+        if issue_key.upper() not in subject.upper():
+            warnings.append(f"{repo_name}: 커밋 메시지에 일감 키 없음 - {commit}")
+        if not _commit_subject_has_allowed_tag(subject):
+            warnings.append(f"{repo_name}: 커밋 태그 규칙 확인 필요 - {commit}")
+    return warnings
+
+
+def _commit_subject_has_allowed_tag(subject: str) -> bool:
+    allowed = ("feat", "fix", "refactor", "test", "docs", "chore", "ci", "style", "perf")
+    lowered = subject.lower()
+    return any(lowered.startswith(f"{tag}:") or lowered.startswith(f"{tag}(") for tag in allowed)
+
+
+def _director_trace_items(work_trace: list[dict]) -> list[str]:
+    if not work_trace:
+        return ["추적 가능한 repository가 아직 없습니다."]
+    items: list[str] = []
+    for item in work_trace[:6]:
+        changed = len(item.get("changed_files") or [])
+        commits = len(item.get("commits") or [])
+        branch = item.get("branch") or "-"
+        items.append(f"{item.get('repo_name')}: {branch}, 변경 {changed}개, 커밋 {commits}개")
+    return items
+
+
 def _director_report_items(
     key: str,
     summary: str,
@@ -770,9 +946,16 @@ def _director_report_items(
     ]
 
 
-def _director_risks(repos: list[dict], repo_states: list[WorkflowRepoState], tests: list[dict], blockers: list[str]) -> list[str]:
+def _director_risks(
+    repos: list[dict],
+    repo_states: list[WorkflowRepoState],
+    tests: list[dict],
+    blockers: list[str],
+    convention_warnings: list[str],
+) -> list[str]:
     risks: list[str] = []
     risks.extend(blockers[-3:])
+    risks.extend(convention_warnings[:4])
     if not repos:
         risks.append("변경 repository가 확정되지 않았습니다.")
     if any((item.behind or 0) > 0 for item in repo_states):
@@ -781,7 +964,18 @@ def _director_risks(repos: list[dict], repo_states: list[WorkflowRepoState], tes
         risks.append("커밋 전 로컬 미커밋 변경을 검토해야 합니다.")
     if not tests:
         risks.append("테스트 결과가 아직 기록되지 않았습니다.")
-    return risks[:6]
+    return _unique(risks)[:6]
+
+
+def _unique(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    output: list[str] = []
+    for value in values:
+        item = value.strip()
+        if item and item not in seen:
+            seen.add(item)
+            output.append(item)
+    return output
 
 
 def _director_focus(status: str, workflow: dict, repos: list[dict], tests: list[dict], reports: list[dict]) -> str:

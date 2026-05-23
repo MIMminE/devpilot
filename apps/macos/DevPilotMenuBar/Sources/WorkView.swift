@@ -929,6 +929,8 @@ struct WorkView: View {
         case "repositories": return "folder"
         case "branch": return "arrow.triangle.branch"
         case "tests": return "checkmark.seal"
+        case "trace": return "point.3.connected.trianglepath.dotted"
+        case "conventions": return "text.badge.checkmark"
         case "report": return "doc.badge.plus"
         default: return "sparkles"
         }
@@ -941,6 +943,8 @@ struct WorkView: View {
         case "repositories": return .green
         case "branch": return .cyan
         case "tests": return .orange
+        case "trace": return .teal
+        case "conventions": return .red
         case "report": return .indigo
         default: return .secondary
         }

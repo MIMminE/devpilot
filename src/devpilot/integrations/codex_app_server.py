@@ -114,6 +114,81 @@ def create_codex_thread(
                 process.kill()
 
 
+def send_codex_turn(
+    *,
+    thread_id: str,
+    workspace_path: str | Path,
+    prompt: str,
+    timeout_seconds: int = 180,
+) -> CodexThreadResult:
+    if not thread_id.strip():
+        raise RuntimeError("Codex thread id가 필요합니다.")
+    workspace = Path(workspace_path).expanduser().resolve()
+    workspace.mkdir(parents=True, exist_ok=True)
+    codex = _codex_executable()
+    started_at = time.monotonic()
+    process = subprocess.Popen(
+        [str(codex), "app-server", "--listen", "stdio://"],
+        cwd=str(workspace),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        bufsize=1,
+    )
+    try:
+        _send(process, 1, "initialize", {"clientInfo": {"name": "devpilot", "version": "0.1.0"}, "capabilities": {"experimentalApi": True}})
+        _read_until_response(process, 1, started_at=started_at, timeout_seconds=timeout_seconds)
+
+        _send(
+            process,
+            2,
+            "thread/resume",
+            {
+                "threadId": thread_id,
+                "cwd": str(workspace),
+                "experimentalRawEvents": False,
+                "persistExtendedHistory": False,
+                "sessionStartSource": "resume",
+                "threadSource": "user",
+                "sandbox": "read-only",
+                "approvalPolicy": "never",
+            },
+        )
+        response, _ = _read_until_response(process, 2, started_at=started_at, timeout_seconds=timeout_seconds)
+        thread = ((response.get("result") or {}).get("thread") or {}) if isinstance(response, dict) else {}
+        resumed_id = str(thread.get("id") or thread_id)
+
+        _send(
+            process,
+            3,
+            "turn/start",
+            {
+                "threadId": resumed_id,
+                "input": [{"type": "text", "text": prompt, "text_elements": []}],
+                "approvalPolicy": "never",
+                "sandboxPolicy": {"type": "readOnly", "networkAccess": False},
+            },
+        )
+        _, response_text = _read_until_turn_completed(process, resumed_id, started_at=started_at, timeout_seconds=timeout_seconds)
+        return CodexThreadResult(
+            thread_id=resumed_id,
+            thread_name=str(thread.get("name") or ""),
+            thread_path=str(thread.get("path") or ""),
+            cwd=str(workspace),
+            response=response_text.strip(),
+        )
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+
+
 def list_codex_projects(*, timeout_seconds: int = 20) -> list[CodexProjectSummary]:
     codex = _codex_executable()
     started_at = time.monotonic()
