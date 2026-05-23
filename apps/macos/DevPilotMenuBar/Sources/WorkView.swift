@@ -42,6 +42,8 @@ struct WorkView: View {
     @State private var selectedIssueWorkflowKey = ""
     @State private var selectedIssueFlowStage = IssueFlowStage.analysis
     @State private var selectedIssueProject = "전체"
+    @State private var issueDirectorDrafts: [String: IssueDirectorRecord] = [:]
+    @State private var loadingIssueDirectorKey = ""
     @State private var isLoadingIssueWorkflows = false
     @State private var isManualIssueCreatePresented = false
     @State private var manualIssueKey = ""
@@ -767,6 +769,10 @@ struct WorkView: View {
     private func issueWorkflowDetail(_ workflow: IssueWorkflowRecord) -> some View {
         DashboardPanel(title: "\(displayIssueKey(workflow.issueKey)) 처리 흐름", systemImage: "arrow.triangle.branch") {
             HStack(spacing: 6) {
+                panelActionChip(title: "AI 지휘관", systemImage: "sparkles") {
+                    Task { await loadIssueDirector(workflow, force: true) }
+                }
+                .disabled(runner.isRunning || loadingIssueDirectorKey == workflow.issueKey)
                 panelActionChip(title: "상세", systemImage: "doc.text.magnifyingglass") {
                     Task {
                         await runDashboardCommand(
@@ -790,9 +796,143 @@ struct WorkView: View {
                         .foregroundStyle(.secondary)
                 }
 
+                issueDirectorPanel(workflow)
                 issueWorkflowTimeline(workflow)
                 issueApprovalPanel(workflow)
             }
+        }
+        .task(id: workflow.issueKey) {
+            await loadIssueDirector(workflow, force: false)
+        }
+    }
+
+    private func issueDirectorPanel(_ workflow: IssueWorkflowRecord) -> some View {
+        let director = issueDirectorDrafts[workflow.issueKey]
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Label("AI 작업 지휘관", systemImage: "sparkles")
+                    .font(.subheadline.weight(.semibold))
+                flowTag(director?.issueType.isEmpty == false ? director?.issueType ?? "" : "초안", tint: .purple)
+                Spacer()
+                if loadingIssueDirectorKey == workflow.issueKey {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+                Button {
+                    Task { await loadIssueDirector(workflow, force: true) }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+                .disabled(runner.isRunning || loadingIssueDirectorKey == workflow.issueKey)
+            }
+
+            if let director {
+                HStack(spacing: 10) {
+                    briefingMetric(title: "진행", value: director.progress.isEmpty ? "-" : director.progress, systemImage: "gauge.with.dots.needle.50percent", tint: .blue, isAttention: false)
+                    briefingMetric(title: "초점", value: director.currentFocus.isEmpty ? "-" : director.currentFocus, systemImage: "scope", tint: .purple, isAttention: false)
+                    briefingMetric(title: "승인", value: director.nextApproval.isEmpty ? "-" : director.nextApproval, systemImage: "hand.tap", tint: .orange, isAttention: true)
+                }
+
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(minimum: 220), spacing: 10, alignment: .top),
+                        GridItem(.flexible(minimum: 220), spacing: 10, alignment: .top),
+                        GridItem(.flexible(minimum: 220), spacing: 10, alignment: .top),
+                    ],
+                    alignment: .leading,
+                    spacing: 10
+                ) {
+                    ForEach(director.sections) { section in
+                        issueDirectorSectionCard(section)
+                    }
+                }
+
+                if !director.risks.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("리스크")
+                            .font(.caption.weight(.semibold))
+                        ForEach(director.risks.prefix(4), id: \.self) { item in
+                            Label(item, systemImage: "exclamationmark.triangle")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(9)
+                    .background(Color.orange.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+            } else {
+                Text("선택한 일감의 분석, 계획, repository, 브랜치, 테스트, 보고 초안을 생성하는 중입니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(10)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.46))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.purple.opacity(0.18), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func issueDirectorSectionCard(_ section: IssueDirectorSectionRecord) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: issueDirectorSectionImage(section.id))
+                    .foregroundStyle(issueDirectorSectionTint(section.id))
+                    .frame(width: 18)
+                Text(section.title)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                Spacer()
+                flowTag(section.status.isEmpty ? "-" : section.status, tint: issueDirectorSectionTint(section.id))
+            }
+
+            if !section.body.isEmpty {
+                Text(section.body)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(section.items.prefix(3), id: \.self) { item in
+                    Label(item, systemImage: "smallcircle.filled.circle")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+        }
+        .padding(9)
+        .background(Color(nsColor: .textBackgroundColor).opacity(0.58))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func issueDirectorSectionImage(_ id: String) -> String {
+        switch id {
+        case "analysis": return "doc.text.magnifyingglass"
+        case "plan": return "checklist"
+        case "repositories": return "folder"
+        case "branch": return "arrow.triangle.branch"
+        case "tests": return "checkmark.seal"
+        case "report": return "doc.badge.plus"
+        default: return "sparkles"
+        }
+    }
+
+    private func issueDirectorSectionTint(_ id: String) -> Color {
+        switch id {
+        case "analysis": return .purple
+        case "plan": return .blue
+        case "repositories": return .green
+        case "branch": return .cyan
+        case "tests": return .orange
+        case "report": return .indigo
+        default: return .secondary
         }
     }
 
@@ -4148,6 +4288,20 @@ struct WorkView: View {
             selectedIssueFlowStage = nextIssueFlowStage(for: workflow)
         }
         isLoadingIssueWorkflows = false
+    }
+
+    private func loadIssueDirector(_ workflow: IssueWorkflowRecord, force: Bool) async {
+        guard force || issueDirectorDrafts[workflow.issueKey] == nil else {
+            return
+        }
+        guard loadingIssueDirectorKey != workflow.issueKey else {
+            return
+        }
+        loadingIssueDirectorKey = workflow.issueKey
+        if let director = await runner.loadIssueDirector(issue: workflow.issueKey) {
+            issueDirectorDrafts[workflow.issueKey] = director
+        }
+        loadingIssueDirectorKey = ""
     }
 
     private func analyzeWorkflowIssue(_ workflow: IssueWorkflowRecord) async {

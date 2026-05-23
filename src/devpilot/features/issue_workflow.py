@@ -242,6 +242,17 @@ def format_workflow(config: AppConfig, issue_key: str) -> str:
     return _format_workflow_detail(config, key, workflow)
 
 
+def issue_director_briefing(config: AppConfig, issue_key: str, *, output_format: str = "text") -> str:
+    key = _normalize_issue_key(issue_key)
+    workflow = get_workflow(key)
+    if not workflow:
+        raise RuntimeError(f"{key} 일감 워크플로우 기록이 없습니다.")
+    payload = _director_payload(config, key, workflow)
+    if output_format == "json":
+        return json.dumps(payload, ensure_ascii=False, indent=2)
+    return _format_director_payload(payload)
+
+
 def format_workflow_list(config: AppConfig, *, active_only: bool = True, output_format: str = "text") -> str:
     workflows = _workflow_map(read_state())
     rows = [
@@ -342,6 +353,256 @@ def _format_workflow_detail(config: AppConfig, key: str, workflow: dict) -> str:
     else:
         lines.append("- 확인 가능한 연결 repository 없음")
     return "\n".join(lines)
+
+
+def _director_payload(config: AppConfig, key: str, workflow: dict) -> dict:
+    repos = _repository_items(workflow)
+    repo_states = _repo_states(config, workflow)
+    tests = [item for item in workflow.get("tests", []) if isinstance(item, dict)]
+    reports = [item for item in workflow.get("reports", []) if isinstance(item, dict)]
+    blockers = [str(item) for item in workflow.get("blockers", []) if str(item).strip()]
+    next_actions = [str(item) for item in workflow.get("next_actions", []) if str(item).strip()]
+    status = str(workflow.get("status") or "assigned")
+    summary = str(workflow.get("summary") or "").strip()
+    issue_type = _director_issue_type(summary, blockers)
+    branch_name = _director_branch_name(key, summary)
+    risks = _director_risks(repos, repo_states, tests, blockers)
+
+    sections = [
+        {
+            "id": "analysis",
+            "title": "분석",
+            "status": "완료" if workflow.get("analysis") else "필요",
+            "body": _director_analysis_body(key, summary, issue_type, workflow),
+            "items": [
+                f"유형: {issue_type}",
+                f"진행도: {_progress_label(workflow)}",
+                f"현재 상태: {_status_label(status)}",
+            ],
+        },
+        {
+            "id": "plan",
+            "title": "작업 계획",
+            "status": "진행",
+            "body": "현재 상태 기준으로 다음 승인 지점을 먼저 처리합니다.",
+            "items": _director_plan(status, bool(workflow.get("analysis")), bool(repos), bool(repo_states), bool(tests), bool(reports)),
+        },
+        {
+            "id": "repositories",
+            "title": "Repository 후보",
+            "status": "확정" if repos else "필요",
+            "body": "연결된 repository와 로컬 Git 신호를 기준으로 작업 범위를 판단합니다.",
+            "items": _director_repository_items(repos, repo_states),
+        },
+        {
+            "id": "branch",
+            "title": "브랜치 전략",
+            "status": "준비" if repo_states else "대기",
+            "body": "일감 키를 유지한 작업 브랜치와 worktree 기준으로 진행합니다.",
+            "items": _director_branch_items(branch_name, repos, repo_states),
+        },
+        {
+            "id": "tests",
+            "title": "테스트 추천",
+            "status": "기록됨" if tests else "추천",
+            "body": "변경 repository가 확정되면 좁은 테스트부터 실행하고 결과를 일감에 기록합니다.",
+            "items": _director_test_items(tests, repo_states),
+        },
+        {
+            "id": "report",
+            "title": "보고 초안",
+            "status": "작성됨" if reports else "초안",
+            "body": "오늘 한 일에 바로 붙일 수 있는 형태로 정리합니다.",
+            "items": _director_report_items(key, summary, repos, repo_states, tests, reports, next_actions),
+        },
+    ]
+    return {
+        "issue_key": key,
+        "project": _project_name("", key, workflow),
+        "summary": summary,
+        "issue_type": issue_type,
+        "progress": _progress_label(workflow),
+        "current_focus": _director_focus(status, workflow, repos, tests, reports),
+        "next_approval": _director_next_approval(workflow, repos, tests, reports),
+        "risks": risks,
+        "sections": sections,
+        "generated_at": _now(config),
+        "mode": "local-director",
+    }
+
+
+def _format_director_payload(payload: dict) -> str:
+    lines = [
+        f"{payload['issue_key']} AI 작업 지휘관",
+        f"- 프로젝트: {payload['project']}",
+        f"- 유형: {payload['issue_type']}",
+        f"- 현재 초점: {payload['current_focus']}",
+        f"- 다음 승인: {payload['next_approval']}",
+        "",
+    ]
+    for section in payload.get("sections", []):
+        lines.append(f"[{section.get('title')}] {section.get('status')}")
+        if section.get("body"):
+            lines.append(f"- {section['body']}")
+        for item in section.get("items", []):
+            lines.append(f"- {item}")
+        lines.append("")
+    risks = payload.get("risks") or []
+    if risks:
+        lines.append("[리스크]")
+        lines.extend(f"- {item}" for item in risks)
+    return "\n".join(lines).strip()
+
+
+def _director_issue_type(summary: str, blockers: list[str]) -> str:
+    text = summary.lower()
+    if blockers:
+        return "막힘/지원 필요"
+    if any(word in text for word in ("bug", "error", "fix", "오류", "버그", "장애", "실패")):
+        return "버그 수정"
+    if any(word in text for word in ("refactor", "리팩토링", "정리", "개선")):
+        return "개선/리팩토링"
+    if any(word in text for word in ("운영", "배포", "장애", "문의")):
+        return "운영 요청"
+    if any(word in text for word in ("추가", "신규", "기능", "feat")):
+        return "신규 기능"
+    return "일반 작업"
+
+
+def _director_analysis_body(key: str, summary: str, issue_type: str, workflow: dict) -> str:
+    if workflow.get("analysis"):
+        return "Codex 1차 분석 기록이 있습니다. 분석 결과를 기준으로 repository와 테스트 범위를 확정하세요."
+    subject = summary or key
+    return f"{subject}은 현재 {issue_type} 성격으로 보입니다. 먼저 As-Is/To-Be와 영향 repository를 확정하는 승인이 필요합니다."
+
+
+def _director_plan(status: str, has_analysis: bool, has_repos: bool, has_workspace: bool, has_tests: bool, has_reports: bool) -> list[str]:
+    items: list[str] = []
+    if not has_analysis:
+        items.append("AI 1차 분석을 승인해 요구사항과 변경 범위를 정리")
+    if not has_repos:
+        items.append("변경 가능성이 있는 repository를 확정")
+    if has_repos and not has_workspace:
+        items.append("일감 전용 worktree와 작업 브랜치 생성 승인")
+    if status not in {"implemented", "tested", "reported", "done", "merged"}:
+        items.append("준비된 workspace에서 구현 진행 후 구현 완료 표시")
+    if not has_tests:
+        items.append("변경 범위에 맞는 테스트 실행 및 결과 기록")
+    if not has_reports:
+        items.append("테스트 근거를 포함해 오늘 한 일 보고 등록")
+    return items or ["완료 처리와 workspace 정리 여부 확인"]
+
+
+def _director_repository_items(repos: list[dict], repo_states: list[WorkflowRepoState]) -> list[str]:
+    if not repos:
+        return ["연결 repository 없음", "일감 본문과 키워드를 기준으로 후보 repository를 먼저 선택하세요."]
+    state_by_path = {str(item.repo_path): item for item in repo_states}
+    items: list[str] = []
+    for repo in repos[:6]:
+        path = str(Path(str(repo.get("repo_path") or "")).expanduser().resolve())
+        state = state_by_path.get(path)
+        if state:
+            items.append(f"{state.repo_name}: {state.branch}, 변경 {state.dirty_count}개, {_sync_label(state.ahead, state.behind)}")
+        else:
+            items.append(f"{repo.get('repo_name') or Path(path).name}: Git 상태 확인 대기")
+    return items
+
+
+def _director_branch_items(branch_name: str, repos: list[dict], repo_states: list[WorkflowRepoState]) -> list[str]:
+    if repo_states:
+        return [f"{item.repo_name}: 현재 {item.branch}, {_sync_label(item.ahead, item.behind)}" for item in repo_states[:6]]
+    if repos:
+        return [f"권장 브랜치명: {branch_name}", "workspace 생성 승인 후 repository별 worktree에서 분기"]
+    return [f"권장 브랜치명: {branch_name}", "repository 확정 전까지 브랜치 생성 대기"]
+
+
+def _director_test_items(tests: list[dict], repo_states: list[WorkflowRepoState]) -> list[str]:
+    if tests:
+        latest = tests[-1]
+        return [
+            f"최근 기록: {latest.get('result') or '-'} / {latest.get('command') or '-'}",
+            latest.get("summary") or "테스트 요약을 보강하면 보고 품질이 좋아집니다.",
+        ]
+    items = ["변경 파일 기준 단위 테스트 또는 가장 가까운 모듈 테스트 실행"]
+    if repo_states:
+        items.append("영향 repository별 빌드/린트/스모크 테스트 중 최소 1개 기록")
+    else:
+        items.append("repository 확정 후 테스트 명령을 추천받아 기록")
+    return items
+
+
+def _director_report_items(
+    key: str,
+    summary: str,
+    repos: list[dict],
+    repo_states: list[WorkflowRepoState],
+    tests: list[dict],
+    reports: list[dict],
+    next_actions: list[str],
+) -> list[str]:
+    if reports:
+        latest = reports[-1]
+        return [latest.get("summary") or "보고 등록됨", f"등록 시각: {latest.get('recorded_at') or '-'}"]
+    repo_text = ", ".join(item.repo_name for item in repo_states[:3])
+    if not repo_text:
+        repo_text = ", ".join(str(item.get("repo_name") or "").strip() for item in repos[:3] if str(item.get("repo_name") or "").strip())
+    repo_text = repo_text or "repository 확정 전"
+    test_text = f"테스트 {tests[-1].get('result')}" if tests else "테스트 기록 전"
+    action = next_actions[-1] if next_actions else "다음 단계 승인 대기"
+    return [
+        f"{key} {summary or '일감'} 작업 진행",
+        f"대상: {repo_text}",
+        f"검증: {test_text}",
+        f"다음: {action}",
+    ]
+
+
+def _director_risks(repos: list[dict], repo_states: list[WorkflowRepoState], tests: list[dict], blockers: list[str]) -> list[str]:
+    risks: list[str] = []
+    risks.extend(blockers[-3:])
+    if not repos:
+        risks.append("변경 repository가 확정되지 않았습니다.")
+    if any((item.behind or 0) > 0 for item in repo_states):
+        risks.append("원격 변경 반영 또는 rebase 확인이 필요합니다.")
+    if any(item.dirty_count > 0 for item in repo_states):
+        risks.append("커밋 전 로컬 미커밋 변경을 검토해야 합니다.")
+    if not tests:
+        risks.append("테스트 결과가 아직 기록되지 않았습니다.")
+    return risks[:6]
+
+
+def _director_focus(status: str, workflow: dict, repos: list[dict], tests: list[dict], reports: list[dict]) -> str:
+    if workflow.get("analysis") is None:
+        return "AI 1차 분석 승인"
+    if not repos:
+        return "repository 확정"
+    if status in {"assigned", "branch_ready", "in_progress"}:
+        return "구현 진행과 브랜치 상태 안정화"
+    if not tests:
+        return "테스트 실행과 결과 기록"
+    if not reports:
+        return "작업 보고 등록"
+    return "완료 처리 확인"
+
+
+def _director_next_approval(workflow: dict, repos: list[dict], tests: list[dict], reports: list[dict]) -> str:
+    if workflow.get("analysis") is None:
+        return "AI 분석 승인"
+    if not repos:
+        return "repository 확정 승인"
+    if not any("issue-workspaces" in str(item.get("repo_path") or "") for item in repos):
+        return "workspace 생성 승인"
+    if not tests:
+        return "테스트 결과 승인"
+    if not reports:
+        return "보고 등록 승인"
+    return "완료 승인"
+
+
+def _director_branch_name(key: str, summary: str) -> str:
+    words = "".join(ch.lower() if ch.isascii() and ch.isalnum() else "-" for ch in summary).strip("-")
+    slug = "-".join(part for part in words.split("-") if part)[:42] or "work"
+    return f"feature/{key}-{slug}"
 
 
 def _format_workflow_summary(config: AppConfig, key: str, workflow: dict) -> str:

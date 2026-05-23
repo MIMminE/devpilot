@@ -38,6 +38,7 @@ from devpilot.features.issue_workflow import (
     evening_workflow_briefing,
     format_workflow,
     format_workflow_list,
+    issue_director_briefing,
     morning_workflow_briefing,
     record_branch_ready,
     record_test_result,
@@ -94,6 +95,9 @@ def build_parser() -> argparse.ArgumentParser:
     issue_analyze.add_argument("issue_key", help="Jira 이슈 키")
     issue_analyze.add_argument("--format", choices=["text", "json"], default="text", help="출력 형식")
     issue_analyze.add_argument("--codex-thread", action="store_true", help="Codex 앱 스레드를 만들고 첫 분석 질문까지 전송")
+    issue_director = issue_sub.add_parser("director", help="일감 AI 작업 지휘관 초안 생성")
+    issue_director.add_argument("issue_key", help="일감 키")
+    issue_director.add_argument("--format", choices=["text", "json"], default="text", help="출력 형식")
     issue_status = issue_sub.add_parser("status", help="일감 워크플로우 상태 변경")
     issue_status.add_argument("issue_key", help="Jira 이슈 키")
     issue_status.add_argument("--state", required=True, choices=["assigned", "branch_ready", "in_progress", "implemented", "tested", "pr_ready", "reviewing", "merged", "reported", "done", "blocked"], help="변경할 상태")
@@ -442,6 +446,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.area == "issue" and args.command == "analyze":
         print(draft_issue_analysis(config, args.issue_key, output_format=args.format, codex_thread=args.codex_thread))
+        return 0
+
+    if args.area == "issue" and args.command == "director":
+        print(issue_director_briefing(config, args.issue_key, output_format=args.format))
         return 0
 
     if args.area == "issue" and args.command == "status":

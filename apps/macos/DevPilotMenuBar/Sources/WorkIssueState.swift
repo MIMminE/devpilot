@@ -245,6 +245,76 @@ struct IssueWorkflowAnalysisRecord: Decodable, Hashable {
     }
 }
 
+struct IssueDirectorRecord: Identifiable, Decodable, Hashable {
+    let issueKey: String
+    let project: String
+    let summary: String
+    let issueType: String
+    let progress: String
+    let currentFocus: String
+    let nextApproval: String
+    let risks: [String]
+    let sections: [IssueDirectorSectionRecord]
+    let generatedAt: String
+    let mode: String
+
+    var id: String { issueKey }
+
+    enum CodingKeys: String, CodingKey {
+        case issueKey = "issue_key"
+        case project
+        case summary
+        case issueType = "issue_type"
+        case progress
+        case currentFocus = "current_focus"
+        case nextApproval = "next_approval"
+        case risks
+        case sections
+        case generatedAt = "generated_at"
+        case mode
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        issueKey = try container.decodeIfPresent(String.self, forKey: .issueKey) ?? ""
+        project = try container.decodeIfPresent(String.self, forKey: .project) ?? ""
+        summary = try container.decodeIfPresent(String.self, forKey: .summary) ?? ""
+        issueType = try container.decodeIfPresent(String.self, forKey: .issueType) ?? ""
+        progress = try container.decodeIfPresent(String.self, forKey: .progress) ?? ""
+        currentFocus = try container.decodeIfPresent(String.self, forKey: .currentFocus) ?? ""
+        nextApproval = try container.decodeIfPresent(String.self, forKey: .nextApproval) ?? ""
+        risks = try container.decodeIfPresent([String].self, forKey: .risks) ?? []
+        sections = try container.decodeIfPresent([IssueDirectorSectionRecord].self, forKey: .sections) ?? []
+        generatedAt = try container.decodeIfPresent(String.self, forKey: .generatedAt) ?? ""
+        mode = try container.decodeIfPresent(String.self, forKey: .mode) ?? ""
+    }
+}
+
+struct IssueDirectorSectionRecord: Identifiable, Decodable, Hashable {
+    let id: String
+    let title: String
+    let status: String
+    let body: String
+    let items: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case title
+        case status
+        case body
+        case items
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        status = try container.decodeIfPresent(String.self, forKey: .status) ?? ""
+        body = try container.decodeIfPresent(String.self, forKey: .body) ?? ""
+        items = try container.decodeIfPresent([String].self, forKey: .items) ?? []
+    }
+}
+
 struct IssueWorkflowTestRecord: Decodable, Hashable {
     let command: String
     let result: String

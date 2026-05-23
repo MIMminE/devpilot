@@ -924,6 +924,18 @@ final class DevPilotRunner: NSObject, ObservableObject, NSWindowDelegate {
         .sorted { $0.updatedAt > $1.updatedAt }
     }
 
+    func loadIssueDirector(issue: String) async -> IssueDirectorRecord? {
+        let result = await Self.executeDetached(["issue", "director", issue, "--format", "json"])
+        lastOutput = result.output
+        guard result.succeeded, let data = result.output.data(using: .utf8),
+              let value = try? JSONDecoder().decode(IssueDirectorRecord.self, from: data) else {
+            status = "\(issue) AI 작업 지휘관 생성 실패"
+            return nil
+        }
+        status = "\(issue) AI 작업 지휘관을 갱신했습니다"
+        return value
+    }
+
     func loadTokenStatuses() async -> [TokenStatusRecord] {
         let result = await Self.executeDetached(["status", "tokens", "--format", "json"])
         lastOutput = result.output
