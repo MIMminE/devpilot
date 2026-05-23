@@ -7,10 +7,11 @@ struct WorkView: View {
     private static let jiraKeyRegex = try? NSRegularExpression(pattern: #"[A-Z][A-Z0-9]+-\d+"#)
 
     @AppStorage("devpilot.work.appearance") private var appearance = "system"
-    @AppStorage("devpilot.work.commandCenterExpanded") private var isCommandCenterExpanded = true
     @AppStorage("devpilot.work.repositoryOrder") private var repositoryOrderRaw = ""
     @AppStorage("devpilot.work.sidebarCollapsed") private var isSidebarCollapsed = false
     @AppStorage("devpilot.work.selectedSection") private var selectedSection = "dashboard"
+    @AppStorage("devpilot.work.workspaceHubMode") private var workspaceHubMode = "repositories"
+    @AppStorage("devpilot.work.reportHubMode") private var reportHubMode = "report"
     @AppStorage("devpilot.work.privacyMaskEnabled") private var privacyMaskEnabled = false
     @AppStorage("devpilot.briefing.yesterdayMemo") private var briefingYesterdayMemo = ""
     @AppStorage("devpilot.briefing.focusProject") private var briefingFocusProject = ""
@@ -549,60 +550,54 @@ struct WorkView: View {
             dashboardSection
         case "work", "jira", "tools", "issueFlow":
             issueFlowSection
-        case "workspaceHub", "repositories", "workspace", "codex":
+        case "workspaceHub", "repositories", "workspace":
             workspaceHubSection
+        case "codex":
+            codexSection
         case "tokens":
             tokenSection
-        case "reportHub", "report", "records":
+        case "reportHub":
             reportHubSection
+        case "report":
+            reportSection
+        case "records":
+            recordsSection
         default:
             dashboardSection
         }
     }
 
-    private var commandCenter: some View {
-        CollapsibleDashboardPanel(
-            title: runner.isPersonalProfile ? "개인 프로젝트 도우미" : "작업 도우미",
-            systemImage: "rectangle.grid.2x2",
-            isExpanded: $isCommandCenterExpanded
-        ) {
-            if runner.isPersonalProfile {
-                HStack(alignment: .top, spacing: 12) {
-                    personalToolActions
-                        .frame(maxWidth: .infinity)
-                    aiSection
-                        .frame(maxWidth: .infinity)
-                }
-            } else {
-                HStack(alignment: .top, spacing: 12) {
-                    toolActions
-                        .frame(maxWidth: .infinity)
-                    aiSection
-                        .frame(maxWidth: .infinity)
-                }
-            }
-        }
-    }
-
-    private var workSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            myJiraDashboardPanel
-            commandCenter
-        }
-    }
-
     private var workspaceHubSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            repositoryActions
-            repositorySection
-            codexSection
+            Picker("작업 환경", selection: $workspaceHubMode) {
+                Text("저장소").tag("repositories")
+                Text("Codex").tag("codex")
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 260)
+
+            if workspaceHubMode == "codex" {
+                codexSection
+            } else {
+                repositorySection
+            }
         }
     }
 
     private var reportHubSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            reportSection
-            recordsSection
+            Picker("보고 기록", selection: $reportHubMode) {
+                Text("보고서").tag("report")
+                Text("기록").tag("records")
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 260)
+
+            if reportHubMode == "records" {
+                recordsSection
+            } else {
+                reportSection
+            }
         }
     }
 
@@ -2342,156 +2337,15 @@ struct WorkView: View {
         }
     }
 
-    private var repositoryActions: some View {
-        DashboardPanel(title: "저장소 상태 도구", systemImage: "arrow.triangle.2.circlepath") {
-            HStack(spacing: 10) {
-                DashboardButton(title: isLoading ? "확인 중" : "상태 동기화", systemImage: "arrow.clockwise") {
+    private var repositorySection: some View {
+        DashboardPanel(title: "저장소", systemImage: "point.3.connected.trianglepath.dotted") {
+            HStack(spacing: 6) {
+                panelActionChip(title: isLoading ? "확인 중" : "동기화", systemImage: "arrow.clockwise") {
                     Task { await reload(notify: true, fetchRemote: true) }
                 }
                 .disabled(isLoading || runner.isRunning)
-
-                Spacer()
             }
-        }
-    }
-
-    private var personalToolActions: some View {
-        CommandGroup(title: "개인 프로젝트", subtitle: "Git 중심 점검", systemImage: "person.crop.circle") {
-            VStack(spacing: 8) {
-                DashboardButton(title: "오늘 흐름", systemImage: "point.topleft.down.curvedto.point.bottomright.up") {
-                    Task { await showTodayActivity() }
-                }
-                .disabled(runner.isRunning)
-
-                DashboardButton(title: "PR 상태", systemImage: "arrow.triangle.pull") {
-                    Task {
-                        await runDashboardCommand(
-                            ["dev", "pr-status"],
-                            title: "PR 상태",
-                            running: "열린 PR 상태를 확인하는 중...",
-                            success: "PR 상태 확인 완료",
-                            failure: "PR 상태 확인 실패"
-                        )
-                    }
-                }
-                .disabled(runner.isRunning)
-
-                DashboardButton(title: "CI 실패", systemImage: "xmark.seal") {
-                    Task {
-                        await runDashboardCommand(
-                            ["dev", "ci-alerts"],
-                            title: "CI 실패",
-                            running: "최근 CI 실패를 확인하는 중...",
-                            success: "CI 실패 확인 완료",
-                            failure: "CI 실패 확인 실패"
-                        )
-                    }
-                }
-                .disabled(runner.isRunning)
-            }
-        }
-    }
-
-    private var toolActions: some View {
-        CommandGroup(title: "루틴", subtitle: "점검과 연결 확인", systemImage: "checklist.checked") {
-            VStack(spacing: 8) {
-                DashboardButton(title: "퇴근 전 점검", systemImage: "checkmark.seal") {
-                    Task {
-                        await runDashboardCommand(
-                            ["routine", "evening", "--dry-run"],
-                            title: "퇴근 전 점검",
-                            running: "퇴근 전 점검을 만드는 중...",
-                            success: "퇴근 전 점검 미리보기 완료",
-                            failure: "퇴근 전 점검 실패"
-                        )
-                    }
-                }
-                .disabled(runner.isRunning)
-
-                DashboardButton(title: "Jira 키 점검", systemImage: "number.square") {
-                    Task {
-                        await runDashboardCommand(
-                            ["dev", "audit-jira-keys"],
-                            title: "Jira 키 점검",
-                            running: "Jira 키 누락을 검사하는 중...",
-                            success: "Jira 키 점검 완료",
-                            failure: "Jira 키 점검 실패"
-                        )
-                    }
-                }
-                .disabled(runner.isRunning)
-
-                DashboardButton(title: "연결 목록", systemImage: "link") {
-                    Task {
-                        let output = await runner.loadIssueRepositoryLinks()
-                        lastMessage = output
-                        showNotice(title: "일감-저장소 연결", message: output, succeeded: !runner.status.contains("실패"))
-                    }
-                }
-                .disabled(runner.isRunning)
-
-                DashboardButton(title: "오늘 흐름", systemImage: "point.topleft.down.curvedto.point.bottomright.up") {
-                    Task { await showTodayActivity() }
-                }
-                .disabled(runner.isRunning)
-
-                DashboardButton(title: "PR 상태", systemImage: "arrow.triangle.pull") {
-                    Task {
-                        await runDashboardCommand(
-                            ["dev", "pr-status"],
-                            title: "PR 상태",
-                            running: "열린 PR 상태를 확인하는 중...",
-                            success: "PR 상태 확인 완료",
-                            failure: "PR 상태 확인 실패"
-                        )
-                    }
-                }
-                .disabled(runner.isRunning)
-
-                DashboardButton(title: "리뷰 요청", systemImage: "person.2.badge.gearshape") {
-                    Task {
-                        await runDashboardCommand(
-                            ["dev", "review-alerts"],
-                            title: "리뷰 요청",
-                            running: "리뷰 요청 PR을 확인하는 중...",
-                            success: "리뷰 요청 확인 완료",
-                            failure: "리뷰 요청 확인 실패"
-                        )
-                    }
-                }
-                .disabled(runner.isRunning)
-
-                DashboardButton(title: "CI 실패", systemImage: "xmark.seal") {
-                    Task {
-                        await runDashboardCommand(
-                            ["dev", "ci-alerts"],
-                            title: "CI 실패",
-                            running: "최근 CI 실패를 확인하는 중...",
-                            success: "CI 실패 확인 완료",
-                            failure: "CI 실패 확인 실패"
-                        )
-                    }
-                }
-                .disabled(runner.isRunning)
-
-                DashboardButton(title: "배포 대기", systemImage: "shippingbox") {
-                    Task {
-                        await runDashboardCommand(
-                            ["jira", "deploy-waiting"],
-                            title: "배포 대기 Jira",
-                            running: "배포 대기 Jira 일감을 확인하는 중...",
-                            success: "배포 대기 Jira 확인 완료",
-                            failure: "배포 대기 Jira 확인 실패"
-                        )
-                    }
-                }
-                .disabled(runner.isRunning)
-            }
-        }
-    }
-
-    private var repositorySection: some View {
-        DashboardPanel(title: "저장소", systemImage: "point.3.connected.trianglepath.dotted") {
+        } content: {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Picker("필터", selection: $filter) {
