@@ -267,12 +267,12 @@ struct SetupView: View {
     private var slackSection: some View {
         SettingsSection(
             title: "Slack 채널 설정",
-            summary: "기능별 알림을 보낼 Slack 채널을 연결합니다.",
+            summary: "선택 기능입니다. 쓰지 않아도 앱 내부 보고 흐름은 유지됩니다.",
             systemImage: "number",
             isExpanded: $isSlackExpanded
         ) {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Slack 앱 Bot Token으로 채널 목록을 불러오고, 기능별 전송 채널을 지정합니다.")
+                Text("Slack 앱 Bot Token으로 채널 목록을 불러오고, 기능별 전송 채널을 지정합니다. 미설정 상태에서는 보고서와 기록을 앱 안에만 남깁니다.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -344,7 +344,7 @@ struct SetupView: View {
     private var jiraSection: some View {
         SettingsSection(
             title: "Jira 연결",
-            summary: "내게 할당된 일감과 프로젝트 기본값을 읽기 위한 정보를 입력합니다.",
+            summary: "선택 기능입니다. Jira 없이도 수동 일감 등록으로 같은 흐름을 사용할 수 있습니다.",
             systemImage: "checklist",
             isExpanded: $isJiraExpanded
         ) {
@@ -658,7 +658,7 @@ struct SetupView: View {
     private var testSection: some View {
         SettingsSection(
             title: "연결 확인",
-            summary: "저장한 설정으로 Slack, Jira, 스케줄 상태를 바로 확인합니다.",
+            summary: "저장한 설정으로 선택 연동과 스케줄 상태를 바로 확인합니다.",
             systemImage: "stethoscope",
             isExpanded: $isTestExpanded
         ) {

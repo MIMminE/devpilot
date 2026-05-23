@@ -1,10 +1,11 @@
 # DevPilot 자동화
 
-DevPilot는 Jira, Git, Slack, OpenAI를 묶어서 개인 업무 자동화를 실행하는 로컬 앱/CLI입니다. 지금은 혼자 쓰는 개발자 비서에 초점을 맞추고, 나중에 기능을 계속 붙일 수 있도록 작은 기능 단위로 확장합니다.
+DevPilot는 Git 중심의 일감 처리 흐름에 Jira, Slack, OpenAI 연동을 선택적으로 붙여 개인 업무 자동화를 실행하는 로컬 앱/CLI입니다. Jira와 Slack을 쓰지 않아도 수동 일감 등록, repository 상태 관리, 브랜치/worktree, 테스트 기록, 보고 흐름은 유지됩니다.
 
 ## 현재 기능
 
 - Jira에서 내게 할당된 미처리 일감을 조회하고 Slack으로 전송
+- Jira 없이 직접 일감을 등록하고 프로젝트 하위에서 처리 흐름 관리
 - Jira 일일 브리핑을 Slack 블록 킷 형태의 리포트 메시지로 전송
 - 기능별 Slack 채널 라우팅: Slack Bot Token 기반 채널 선택
 - Jira 하위 일감과 Jira 키 기반 로컬 브랜치 후보 표시
@@ -26,7 +27,7 @@ DevPilot는 Jira, Git, Slack, OpenAI를 묶어서 개인 업무 자동화를 실
 - 출근 Git 정비: 관리 repo fetch, 안전한 fast-forward 자동 최신화, 확인 필요 항목 Slack 알림
 - 설정 화면에서 GitHub repository clone 위치 지정
 - Git repository 상태 요약: 변경 있음, push 필요, rebase/pull 확인
-- 설정 진단: Jira/Slack/OpenAI 설정값과 관리 repository 확인
+- 설정 진단: Git 필수 상태와 Jira/Slack/OpenAI 선택 연동 상태 확인
 - macOS SwiftUI 메뉴바 앱
 - 태그 기반 GitHub Actions 릴리즈 빌드
 

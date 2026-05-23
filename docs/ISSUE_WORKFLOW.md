@@ -1,11 +1,11 @@
 # Issue Workflow
 
-DevPilot의 Issue Workflow는 Jira 일감 하나가 배정된 뒤 작업, 테스트, 보고까지 이어지는 흐름을 로컬 상태로 관리한다.
+DevPilot의 Issue Workflow는 일감 하나가 들어온 뒤 작업, 테스트, 보고까지 이어지는 흐름을 로컬 상태로 관리한다. Git repository 관리는 핵심 전제이고, Jira와 Slack은 선택 연동이다.
 
 ## 목표
 
-- Jira 일감과 repository, 브랜치, 테스트 결과, 작업 보고를 하나의 세션으로 연결한다.
-- Jira 상세를 기반으로 Codex 1차 분석 요청서를 만들고 신규 기능/As-Is/To-Be 판단을 먼저 정리한다.
+- Jira 또는 수동 등록 일감과 repository, 브랜치, 테스트 결과, 작업 보고를 하나의 세션으로 연결한다.
+- Jira 상세 또는 수동 입력 내용을 기반으로 Codex 1차 분석 요청서를 만들고 신규 기능/As-Is/To-Be 판단을 먼저 정리한다.
 - 아침 브리핑에서는 미완료 일감의 현재 진행도와 다음 행동을 보여준다.
 - 저녁 브리핑에서는 완료/진행 중/막힘 상태를 정리해 오늘 한 일과 내일 이어갈 일을 만든다.
 - 커밋 메시지는 기존 커밋 태그 규칙과 Jira 키를 함께 쓰도록 유도한다.
@@ -13,11 +13,11 @@ DevPilot의 Issue Workflow는 Jira 일감 하나가 배정된 뒤 작업, 테스
 ## 기본 흐름
 
 ```text
-Jira 일감 확인
+일감 확인(Jira 또는 수동 등록)
 -> Codex 1차 분석 요청
 -> Issue Workflow 시작
 -> repository 연결
--> Jira 키 포함 브랜치 생성
+-> 일감 키 포함 브랜치 생성
 -> Codex와 작업
 -> 커밋 메시지 초안 생성
 -> 테스트 결과 기록

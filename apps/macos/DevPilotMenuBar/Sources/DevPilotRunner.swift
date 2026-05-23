@@ -958,12 +958,12 @@ final class DevPilotRunner: NSObject, ObservableObject, NSWindowDelegate {
         return result.output.isEmpty ? result.summary : result.output
     }
 
-    func checkNewJiraIssues() async -> DevPilotCommandResult {
+    func checkNewJiraIssues(showFailureWindow: Bool = true) async -> DevPilotCommandResult {
         status = "새 Jira 일감을 확인하는 중..."
         let result = await Self.executeDetached(["jira", "watch-new"])
         lastOutput = result.output
         status = result.succeeded ? "새 Jira 일감 확인 완료" : "새 Jira 일감 확인 실패"
-        if !result.succeeded {
+        if !result.succeeded && showFailureWindow {
             openOutputWindow(title: "새 Jira 일감 확인 오류", output: result.output.isEmpty ? result.summary : result.output)
         }
         return DevPilotCommandResult(succeeded: result.succeeded, output: result.output, summary: result.summary)

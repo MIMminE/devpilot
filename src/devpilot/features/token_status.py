@@ -13,8 +13,15 @@ from devpilot.config import AppConfig
 def token_status(config: AppConfig, *, output_format: str = "text") -> str:
     metadata = _token_metadata()
     rows = [
-        _token_row("jira", "Jira API Token", bool(config.jira.base_url and config.jira.email and config.jira.api_token), config.jira.api_token, metadata),
-        _token_row("slack", "Slack Bot Token", bool(config.slack.bot_token), config.slack.bot_token, metadata),
+        _token_row(
+            "jira",
+            "Jira API Token",
+            bool(config.jira.base_url and config.jira.email and config.jira.api_token),
+            config.jira.api_token,
+            metadata,
+            required=False,
+        ),
+        _token_row("slack", "Slack Bot Token", bool(config.slack.bot_token), config.slack.bot_token, metadata, required=False),
         _token_row("openai", "OpenAI API Key", bool(config.openai.api_key), config.openai.api_key, metadata),
         _github_row(metadata),
     ]
@@ -23,17 +30,26 @@ def token_status(config: AppConfig, *, output_format: str = "text") -> str:
     return _format_text(rows)
 
 
-def _token_row(key: str, name: str, configured: bool, secret: str, metadata: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def _token_row(
+    key: str,
+    name: str,
+    configured: bool,
+    secret: str,
+    metadata: dict[str, dict[str, Any]],
+    *,
+    required: bool = True,
+) -> dict[str, Any]:
     meta = metadata.get(key, {})
     expires_at = str(meta.get("expires_at") or "").strip()
     days_remaining = _days_remaining(expires_at)
-    status, detail = _status(configured, expires_at, days_remaining)
+    status, detail = _status(configured, expires_at, days_remaining, required=required)
     if configured and not expires_at:
         detail = "설정됨. 만료일은 자동 확인이 어려워 별도 등록이 필요합니다."
     return {
         "id": key,
         "name": name,
         "configured": configured,
+        "required": required,
         "status": status,
         "detail": detail,
         "expires_at": expires_at,
@@ -57,7 +73,7 @@ def _github_row(metadata: dict[str, dict[str, Any]]) -> dict[str, Any]:
             detail = f"gh 상태 확인 실패: {exc}"
     expires_at = str(meta.get("expires_at") or "").strip()
     days_remaining = _days_remaining(expires_at)
-    status, expiry_detail = _status(configured, expires_at, days_remaining)
+    status, expiry_detail = _status(configured, expires_at, days_remaining, required=True)
     if configured and not expires_at:
         expiry_detail = "설정됨. gh 토큰 만료일은 별도 등록이 필요합니다."
     if not configured:
@@ -66,6 +82,7 @@ def _github_row(metadata: dict[str, dict[str, Any]]) -> dict[str, Any]:
         "id": "github",
         "name": "GitHub CLI",
         "configured": configured,
+        "required": True,
         "status": status,
         "detail": expiry_detail,
         "expires_at": expires_at,
@@ -81,8 +98,10 @@ def _token_metadata() -> dict[str, dict[str, Any]]:
     return raw if isinstance(raw, dict) else {}
 
 
-def _status(configured: bool, expires_at: str, days_remaining: int | None) -> tuple[str, str]:
+def _status(configured: bool, expires_at: str, days_remaining: int | None, *, required: bool) -> tuple[str, str]:
     if not configured:
+        if not required:
+            return "optional", "선택 연동 미설정. 핵심 Git/수동 일감 흐름은 그대로 사용할 수 있습니다."
         return "missing", "토큰 또는 필수 설정이 없습니다."
     if days_remaining is None:
         return "unknown", "만료일 미등록"

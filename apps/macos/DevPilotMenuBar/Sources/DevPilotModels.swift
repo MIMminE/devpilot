@@ -63,7 +63,7 @@ struct DevPilotProfile: Identifiable, Hashable, Sendable {
     static let work = DevPilotProfile(
         id: "work",
         title: "업무",
-        subtitle: "조직 Jira, Slack, GitHub 흐름",
+        subtitle: "Git 중심, Jira/Slack 선택 연동",
         systemImage: "building.2",
         kind: .work
     )
@@ -132,8 +132,7 @@ struct DevPilotSettings {
     }
 
     var isReadyForBasicTests: Bool {
-        slackJiraReady
-            && jiraBaseURL.hasPrefix("https://")
+        jiraBaseURL.hasPrefix("https://")
             && jiraEmail.contains("@")
             && !jiraApiToken.isEmpty
             && !jiraDefaultProject.isEmpty

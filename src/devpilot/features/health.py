@@ -34,11 +34,8 @@ def run_health(config: AppConfig, *, check_connections: bool = True, send_alert:
 
 def _required_setting_checks(config: AppConfig) -> list[HealthCheck]:
     return [
-        _required("jira.base_url", config.jira.base_url, "Jira 사이트 URL 필요"),
-        _required("jira.email", config.jira.email, "Jira 계정 이메일 필요"),
-        _required("jira.api_token", config.jira.api_token, "Jira API 토큰 필요"),
-        _required("slack.alerts", config.slack.destination_configured("alerts"), "실패 알림 Slack 채널 권장"),
-        _required("slack.jira_daily", config.slack.destination_configured("jira_daily"), "Jira 브리핑 Slack 채널 필요"),
+        _optional_integration("jira.integration", config.features.jira, _jira_configured(config), "Jira 연동 미설정: 수동 일감 등록으로 진행 가능"),
+        _optional_integration("slack.integration", config.features.notifications, _slack_configured(config), "Slack 연동 미설정: 앱 내부 기록과 보고로 진행 가능"),
         _required("gh.cli", shutil.which("gh") or "", "GitHub CLI 설치와 gh auth login 필요"),
         _required("repositories.projects", bool(configured_repositories(config)), "gh CLI로 관리할 repository 등록 필요"),
         _optional("openai.api_key", config.openai.api_key, "AI 초안 생성 시 필요"),
@@ -63,9 +60,27 @@ def _optional(name: str, value: str, missing: str) -> HealthCheck:
     return HealthCheck(name, "OK", "설정됨") if value else HealthCheck(name, "WARN", missing)
 
 
+def _optional_integration(name: str, enabled: bool, configured: bool, missing: str) -> HealthCheck:
+    if not enabled:
+        return HealthCheck(name, "WARN", "선택 기능 비활성화")
+    if configured:
+        return HealthCheck(name, "OK", "선택 연동 설정됨")
+    return HealthCheck(name, "WARN", missing)
+
+
+def _jira_configured(config: AppConfig) -> bool:
+    return bool(config.jira.base_url and config.jira.email and config.jira.api_token)
+
+
+def _slack_configured(config: AppConfig) -> bool:
+    return bool(config.slack.bot_token and any(config.slack.channels.values()))
+
+
 def _check_jira(config: AppConfig) -> HealthCheck:
-    if not config.jira.base_url or not config.jira.email or not config.jira.api_token:
-        return HealthCheck("jira.connection", "FAIL", "Jira URL/email/token 설정 필요")
+    if not config.features.jira:
+        return HealthCheck("jira.connection", "WARN", "선택 기능 비활성화")
+    if not _jira_configured(config):
+        return HealthCheck("jira.connection", "WARN", "Jira 연동 미설정: 수동 일감 등록으로 진행 가능")
     try:
         JiraClient(config.jira).search("assignee = currentUser() ORDER BY updated DESC", max_results=1)
         return HealthCheck("jira.connection", "OK", "Jira API 연결 정상")
@@ -74,8 +89,10 @@ def _check_jira(config: AppConfig) -> HealthCheck:
 
 
 def _check_slack(config: AppConfig, destination: str) -> HealthCheck:
+    if not config.features.notifications:
+        return HealthCheck(f"slack.{destination}", "WARN", "선택 기능 비활성화")
     if not config.slack.destination_configured(destination):
-        return HealthCheck(f"slack.{destination}", "FAIL", f"{destination} Slack 채널 설정 필요")
+        return HealthCheck(f"slack.{destination}", "WARN", f"{destination} Slack 채널 미설정: 앱 내부 기록으로 진행 가능")
     if config.slack.mode == "oauth":
         try:
             count = len(list_channels(config.slack))
@@ -124,6 +141,8 @@ def _format_health(checks: list[HealthCheck]) -> str:
 def _send_alert(config: AppConfig, checks: list[HealthCheck]) -> None:
     problems = [item for item in checks if not item.ok]
     if not problems:
+        return
+    if not config.features.notifications or not config.slack.destination_configured("alerts"):
         return
     text = "\n".join(f"- [{item.status}] {item.name}: {item.detail}" for item in problems[:12])
     SlackClient(config.slack, destination="alerts").send(

@@ -1070,7 +1070,7 @@ struct WorkView: View {
                 HStack(spacing: 10) {
                     briefingMetric(title: "정상", value: String(tokenStatusCount("ok")), systemImage: "checkmark.seal", tint: .green, isAttention: false)
                     briefingMetric(title: "확인 필요", value: "\(tokenAttentionCount)", systemImage: "exclamationmark.triangle", tint: .orange, isAttention: tokenAttentionCount > 0)
-                    briefingMetric(title: "누락", value: String(tokenStatusCount("missing")), systemImage: "xmark.octagon", tint: .red, isAttention: tokenStatusCount("missing") > 0)
+                    briefingMetric(title: "선택 꺼짐", value: String(tokenStatusCount("optional")), systemImage: "power", tint: .secondary, isAttention: false)
                 }
             }
 
@@ -1121,7 +1121,7 @@ struct WorkView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 8) {
-                    flowTag(item.configured ? "설정됨" : "누락", tint: item.configured ? .green : .red)
+                    flowTag(tokenConfiguredLabel(item), tint: tokenConfiguredTint(item))
                     if !item.tokenHint.isEmpty {
                         flowTag(item.tokenHint, tint: .secondary)
                     }
@@ -1156,6 +1156,7 @@ struct WorkView: View {
         case "warning": return "만료 임박"
         case "expired": return "만료"
         case "missing": return "누락"
+        case "optional": return "선택 꺼짐"
         default: return "확인 필요"
         }
     }
@@ -1165,6 +1166,7 @@ struct WorkView: View {
         case "ok": return .green
         case "warning", "unknown": return .orange
         case "expired", "missing": return .red
+        case "optional": return .secondary
         default: return .secondary
         }
     }
@@ -1174,8 +1176,17 @@ struct WorkView: View {
         case "ok": return "checkmark.seal"
         case "warning", "unknown": return "exclamationmark.triangle"
         case "expired", "missing": return "xmark.octagon"
+        case "optional": return "power"
         default: return "key.horizontal"
         }
+    }
+
+    private func tokenConfiguredLabel(_ item: TokenStatusRecord) -> String {
+        item.status == "optional" ? "선택" : (item.configured ? "설정됨" : "누락")
+    }
+
+    private func tokenConfiguredTint(_ item: TokenStatusRecord) -> Color {
+        item.status == "optional" ? .secondary : (item.configured ? .green : .red)
     }
 
     private var devPilotCodexThreadCount: Int {
@@ -3029,7 +3040,7 @@ struct WorkView: View {
             guard !runner.isSetupOpen, !runner.isPersonalProfile, !runner.isRunning else {
                 continue
             }
-            await checkNewJiraIssues(showEmptyResult: false)
+            await checkNewJiraIssues(showEmptyResult: false, showFailureWindow: false)
         }
     }
 
@@ -4407,8 +4418,8 @@ struct WorkView: View {
         }
     }
 
-    private func checkNewJiraIssues(showEmptyResult: Bool) async {
-        let result = await runner.checkNewJiraIssues()
+    private func checkNewJiraIssues(showEmptyResult: Bool, showFailureWindow: Bool = true) async {
+        let result = await runner.checkNewJiraIssues(showFailureWindow: showFailureWindow)
         lastMessage = result.displayText
         let hasNewIssues = result.displayText.hasPrefix("새로 등록된 Jira 일감")
         if hasNewIssues && result.succeeded {
