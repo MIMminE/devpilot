@@ -91,6 +91,8 @@ devpilot issue evening
 
 macOS 앱의 `일감 처리 콘솔`은 위 CLI 흐름을 승인 단계로 보여준다.
 
+![DevPilot 일감 처리 콘솔](assets/screenshots/devpilot-issue-flow.png)
+
 ```text
 일감 수신 -> AI 분석 -> repo 확정 -> workspace 준비 -> 업무 처리 -> 테스트 -> 보고/완료
 ```
@@ -102,6 +104,22 @@ macOS 앱의 `일감 처리 콘솔`은 위 CLI 흐름을 승인 단계로 보여
 - `테스트`와 `보고/완료` 단계에서는 실행 결과와 보고 내용을 워크플로우 기록으로 남긴다.
 
 `AI 작업 지휘관` 패널은 현재 워크플로우 상태를 바탕으로 분석, 작업 계획, repository 후보, 브랜치 전략, 테스트 추천, 컨벤션 점검, 보고 초안을 한 화면에 정리한다.
+
+![DevPilot AI 작업 지휘관](assets/screenshots/devpilot-ai-director.png)
+
+## Codex 컨텍스트 전달
+
+실제 Codex 대화 화면은 개인 작업 기록이나 회사 업무 맥락이 함께 노출될 수 있으므로 공개 문서에는 직접 캡처를 넣지 않는다. 대신 DevPilot이 어떤 정보를 모아 Codex 작업 루트로 넘기는지 공개용 샘플 구조로 설명한다.
+
+Codex 작업 루트를 열 때 포함하는 정보는 다음과 같다.
+
+- Jira 또는 수동 일감 요약, 본문, 댓글, 완료 조건
+- Codex 1차 분석 결과 또는 로컬 분석 기록
+- 연결 repository, 기준 브랜치, 현재 브랜치, 변경 파일 상태
+- `AGENTS.md` 같은 repository별 작업 규칙
+- 테스트 추천, 보고 초안, 이전 단계의 승인 기록
+
+실제 Codex 작업 화면을 문서에 추가할 때는 사이드바와 대화 기록에 민감 정보가 없는 샘플 프로필을 준비한 뒤, 해당 Codex 윈도우만 캡처해 보강한다.
 
 ## 브리핑 반영
 

@@ -34,6 +34,11 @@
       "label": "제품 기획안",
       "url": "docs/PRODUCT_PLAN.md",
       "type": "docs"
+    },
+    {
+      "label": "면접 대비 노트",
+      "url": "docs/INTERVIEW_PREP.md",
+      "type": "docs"
     }
   ]
 }
