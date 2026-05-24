@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -67,7 +68,13 @@ def git(repo: Path, *args: str) -> str:
             text=True,
             encoding="utf-8",
             errors="replace",
+            env=_git_env(),
+            timeout=120,
         )
+    except FileNotFoundError as exc:
+        raise RuntimeError("git 실행 파일을 찾지 못했습니다. Git 설치 상태를 확인해 주세요.") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"git {' '.join(args)} timed out in {repo}") from exc
     except subprocess.CalledProcessError as exc:
         detail = (exc.stderr or exc.stdout or "").strip()
         raise RuntimeError(f"git {' '.join(args)} failed in {repo}: {detail}") from exc
@@ -82,6 +89,7 @@ def git_result(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
         text=True,
         encoding="utf-8",
         errors="replace",
+        env=_git_env(),
     )
 
 
@@ -464,6 +472,13 @@ def _branch_ref_exists(repo: Path, ref: str) -> bool:
 
 def _git_result_message(result: subprocess.CompletedProcess[str]) -> str:
     return (result.stderr or result.stdout or "").strip()
+
+
+def _git_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env.setdefault("GIT_TERMINAL_PROMPT", "0")
+    env.setdefault("GCM_INTERACTIVE", "Never")
+    return env
 
 
 def _matches_identity(author: str, author_email: str, identities: set[str]) -> bool:

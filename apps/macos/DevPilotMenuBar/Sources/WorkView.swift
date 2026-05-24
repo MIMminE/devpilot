@@ -1088,12 +1088,21 @@ struct WorkView: View {
             }
             .disabled(runner.isRunning || workflow.repositories.isEmpty || workflow.repositories.contains(where: \.isWorkspaceRepo))
         case .implementation:
-            Button {
-                Task { await markWorkflowImplemented(workflow) }
-            } label: {
-                Label("구현 완료 표시", systemImage: "checkmark.seal")
+            HStack(spacing: 8) {
+                Button {
+                    Task { await openCodexForWorkflow(workflow) }
+                } label: {
+                    Label("Codex 작업 열기", systemImage: "sparkles.rectangle.stack")
+                }
+                .disabled(runner.isRunning || workflow.repositories.isEmpty)
+
+                Button {
+                    Task { await markWorkflowImplemented(workflow) }
+                } label: {
+                    Label("구현 완료 표시", systemImage: "checkmark.seal")
+                }
+                .disabled(runner.isRunning)
             }
-            .disabled(runner.isRunning)
         case .test:
             if workflow.tests.isEmpty {
                 Button {
@@ -4390,6 +4399,16 @@ struct WorkView: View {
         )
         issueDirectorDrafts.removeValue(forKey: workflow.issueKey)
         await loadIssueWorkflows(force: true)
+    }
+
+    private func openCodexForWorkflow(_ workflow: IssueWorkflowRecord) async {
+        let result = await runner.openCodexWorkspaceForWorkflow(workflow)
+        lastMessage = result.displayText
+        if result.succeeded {
+            rememberBriefing("\(workflow.issueKey) Codex 워크플로우 열기")
+        } else {
+            showNotice(title: "\(workflow.issueKey) Codex 작업", message: result.displayText, succeeded: false)
+        }
     }
 
     private func workflowStageState(_ workflow: IssueWorkflowRecord, stage: IssueFlowStage) -> (label: String, tint: Color, systemImage: String) {

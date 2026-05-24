@@ -409,8 +409,8 @@ def _gh_json(args: list[str]) -> list[dict]:
         if repo_index >= len(args) or not args[repo_index]:
             return []
     try:
-        result = subprocess.run(args, check=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
-    except (FileNotFoundError, subprocess.CalledProcessError):
+        result = subprocess.run(args, check=True, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=15)
+    except (FileNotFoundError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
         return []
     try:
         payload = json.loads(result.stdout or "[]")

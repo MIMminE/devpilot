@@ -1505,6 +1505,93 @@ final class DevPilotRunner: NSObject, ObservableObject, NSWindowDelegate {
         return DevPilotCommandResult(succeeded: result.succeeded, output: output, summary: result.summary)
     }
 
+    func openCodexWorkspaceForWorkflow(_ workflow: IssueWorkflowRecord) async -> DevPilotCommandResult {
+        let codexURL = Self.codexExecutableURL()
+        guard FileManager.default.isExecutableFile(atPath: codexURL.path) else {
+            let message = "Codex CLI를 찾지 못했습니다: \(codexURL.path)"
+            status = message
+            return DevPilotCommandResult(succeeded: false, output: message, summary: message)
+        }
+
+        let repositories = workflow.repositories.filter { !$0.repoPath.isEmpty }
+        guard !repositories.isEmpty else {
+            let message = "\(workflow.issueKey) 연결 repository가 없습니다."
+            status = message
+            return DevPilotCommandResult(succeeded: false, output: message, summary: message)
+        }
+
+        let workspaceRoot = Self.workflowCodexRoot(for: repositories)
+        let contextDirectory = workspaceRoot.appendingPathComponent(".devpilot-codex", isDirectory: true)
+        let contextURL = contextDirectory.appendingPathComponent("\(workflow.issueKey)-workflow-context.md")
+        let repoList = repositories
+            .map { "- \($0.repoName.isEmpty ? $0.repoPath : $0.repoName): \($0.repoPath) | branch \($0.branch.isEmpty ? "-" : $0.branch)" }
+            .joined(separator: "\n")
+        let tests = workflow.tests
+            .map { "- \($0.command.isEmpty ? "테스트" : $0.command): \($0.result.isEmpty ? "-" : $0.result) \($0.summary)" }
+            .joined(separator: "\n")
+        let reports = workflow.reports
+            .map { "- \($0.recordedAt.isEmpty ? "-" : $0.recordedAt): \($0.summary)" }
+            .joined(separator: "\n")
+        let nextActions = workflow.nextActions.map { "- \($0)" }.joined(separator: "\n")
+        let blockers = workflow.blockers.map { "- \($0)" }.joined(separator: "\n")
+        let analysis = workflow.analysis.map { value in
+            """
+            - prompt: \(value.promptPath.isEmpty ? "-" : value.promptPath)
+            - response: \(value.responsePath.isEmpty ? "-" : value.responsePath)
+            - thread: \(value.threadName.isEmpty ? "-" : value.threadName)
+            """
+        } ?? "- 아직 AI 1차 분석 기록 없음"
+
+        let context = CodexPromptBuilder.build(
+            kind: .issueWorkspace,
+            userRequest: "\(workflow.issueKey) 일감 워크플로우를 이어서 진행해줘. 현재 상태, repository, 분석 결과, 테스트/보고 기록을 기준으로 다음 구현 작업과 검증을 제안하고 필요한 변경을 진행해줘.",
+            context: [
+                CodexPromptSection("Workflow", "- Key: \(workflow.issueKey)\n- Summary: \(workflow.summary.isEmpty ? "-" : workflow.summary)\n- Status: \(workflow.status)\n- Updated: \(workflow.updatedAt.isEmpty ? "-" : workflow.updatedAt)"),
+                CodexPromptSection("AI Analysis", analysis),
+                CodexPromptSection("Repositories", repoList),
+                CodexPromptSection("Tests", tests.isEmpty ? "- 기록 없음" : tests),
+                CodexPromptSection("Reports", reports.isEmpty ? "- 기록 없음" : reports),
+                CodexPromptSection("Next Actions", nextActions.isEmpty ? "- 없음" : nextActions),
+                CodexPromptSection("Blockers", blockers.isEmpty ? "- 없음" : blockers),
+            ],
+            globalRules: loadCodexPromptRulesForPrompt(),
+            rules: [
+                "작업 전 현재 브랜치와 미커밋 변경을 확인한다.",
+                "일감 키 \(workflow.issueKey)를 브랜치, 커밋, PR 문맥에서 유지한다.",
+                "작업 후 실행한 검증 명령과 결과를 DevPilot 워크플로우에 기록할 수 있게 요약한다.",
+                "불명확한 요구사항은 구현 전에 질문으로 분리한다.",
+            ]
+        )
+
+        do {
+            try FileManager.default.createDirectory(at: contextDirectory, withIntermediateDirectories: true)
+            try context.write(to: contextURL, atomically: true, encoding: .utf8)
+        } catch {
+            let message = "Codex 워크플로우 컨텍스트 생성 실패: \(error.localizedDescription)"
+            status = message
+            return DevPilotCommandResult(succeeded: false, output: message, summary: message)
+        }
+
+        status = "\(workflow.issueKey) Codex 워크플로우를 여는 중..."
+        let result = await Self.executeDetachedRaw(["app", workspaceRoot.path], executableURL: codexURL)
+        let output = """
+        Codex 워크플로우를 열었습니다.
+        - issue: \(workflow.issueKey)
+        - workspace: \(workspaceRoot.path)
+        - context: \(contextURL.path)
+
+        Codex에서 위 context 파일을 기준으로 구현, 검증, 보고 흐름을 이어가면 됩니다.
+
+        \(result.output)
+        """
+        lastOutput = output
+        status = result.succeeded ? "\(workflow.issueKey) Codex 워크플로우 열기 완료" : "\(workflow.issueKey) Codex 워크플로우 열기 실패"
+        if !result.succeeded {
+            openOutputWindow(title: "Codex 워크플로우 열기 오류", output: result.output.isEmpty ? result.summary : result.output)
+        }
+        return DevPilotCommandResult(succeeded: result.succeeded, output: output, summary: result.summary)
+    }
+
     func openCodexForRepositoryTask(repo: LocalRepositoryOption, instruction: String, convention: String, taskKind: String) async -> DevPilotCommandResult {
         let codexURL = Self.codexExecutableURL()
         guard FileManager.default.isExecutableFile(atPath: codexURL.path) else {
@@ -1570,6 +1657,19 @@ final class DevPilotRunner: NSObject, ObservableObject, NSWindowDelegate {
             openOutputWindow(title: "Codex repository 작업 오류", output: result.output.isEmpty ? result.summary : result.output)
         }
         return DevPilotCommandResult(succeeded: result.succeeded, output: output, summary: result.summary)
+    }
+
+    private static func workflowCodexRoot(for repositories: [IssueWorkflowRepositoryRecord]) -> URL {
+        if let workspaceRepo = repositories.first(where: { $0.isWorkspaceRepo }) {
+            let repoURL = URL(fileURLWithPath: workspaceRepo.repoPath, isDirectory: true).standardizedFileURL
+            let reposURL = repoURL.deletingLastPathComponent()
+            if reposURL.lastPathComponent == "repos" {
+                return reposURL.deletingLastPathComponent()
+            }
+            return repoURL
+        }
+        let urls = repositories.map { URL(fileURLWithPath: $0.repoPath, isDirectory: true).standardizedFileURL }
+        return commonWorkspaceRoot(for: urls) ?? urls[0]
     }
 
     func loadCodexHealth() async -> CodexHealthStatus {

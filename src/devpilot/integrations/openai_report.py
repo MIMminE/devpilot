@@ -23,14 +23,19 @@ def generate_text(config: OpenAIConfig, *, system: str, prompt: str, fallback: s
             {"role": "user", "content": prompt},
         ],
     }
-    response = json_request(
-        "POST",
-        "https://api.openai.com/v1/responses",
-        headers={"Authorization": f"Bearer {api_key}"},
-        payload=payload,
-        timeout=60,
-    )
-    return _extract_output_text(response)
+    try:
+        response = json_request(
+            "POST",
+            "https://api.openai.com/v1/responses",
+            headers={"Authorization": f"Bearer {api_key}"},
+            payload=payload,
+            timeout=60,
+        )
+        if not isinstance(response, dict):
+            raise RuntimeError("OpenAI response 응답 형식이 올바르지 않습니다.")
+        return _extract_output_text(response)
+    except RuntimeError:
+        return fallback
 
 
 def build_report(config: OpenAIConfig, commits_text: str, *, manual_notes: str = "", report_rules: str = "") -> str:
@@ -67,10 +72,21 @@ def tone_instruction(tone: str) -> str:
 
 
 def _extract_output_text(response: dict) -> str:
-    if response.get("output_text"):
-        return response["output_text"].strip()
-    for item in response.get("output", []):
-        for content in item.get("content", []):
+    output_text = response.get("output_text")
+    if isinstance(output_text, str) and output_text.strip():
+        return output_text.strip()
+    output = response.get("output", [])
+    if not isinstance(output, list):
+        raise RuntimeError("OpenAI response output 형식이 올바르지 않습니다.")
+    for item in output:
+        if not isinstance(item, dict):
+            continue
+        contents = item.get("content", [])
+        if not isinstance(contents, list):
+            continue
+        for content in contents:
+            if not isinstance(content, dict):
+                continue
             if content.get("type") == "output_text" and content.get("text"):
                 return content["text"].strip()
     raise RuntimeError("OpenAI response did not include output text.")

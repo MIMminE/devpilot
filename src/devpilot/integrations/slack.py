@@ -22,6 +22,8 @@ class SlackClient:
             )
 
     def send(self, text: str, *, blocks: list[dict[str, Any]] | None = None) -> None:
+        if not text.strip():
+            raise RuntimeError("Slack으로 보낼 메시지 본문이 비어 있습니다.")
         payload: dict[str, Any] = {"text": text}
         if blocks:
             payload["blocks"] = blocks
@@ -41,7 +43,8 @@ def list_channels(config: SlackConfig) -> list[dict[str, str]]:
 
     channels: list[dict[str, str]] = []
     cursor = ""
-    while True:
+    seen_cursors: set[str] = set()
+    for _ in range(20):
         query = {"types": "public_channel,private_channel", "limit": "200"}
         if cursor:
             query["cursor"] = cursor
@@ -52,6 +55,8 @@ def list_channels(config: SlackConfig) -> list[dict[str, str]]:
             headers={"Authorization": f"Bearer {config.bot_token}"},
         )
         _raise_for_slack_error(response)
+        if not isinstance(response, dict):
+            raise RuntimeError("Slack channels 응답 형식이 올바르지 않습니다.")
         for item in response.get("channels", []):
             channels.append(
                 {
@@ -63,9 +68,15 @@ def list_channels(config: SlackConfig) -> list[dict[str, str]]:
         cursor = str(response.get("response_metadata", {}).get("next_cursor", ""))
         if not cursor:
             return channels
+        if cursor in seen_cursors:
+            raise RuntimeError("Slack channels pagination cursor가 반복되어 조회를 중단했습니다.")
+        seen_cursors.add(cursor)
+    raise RuntimeError("Slack channels pagination 한도를 초과했습니다.")
 
 
 def _raise_for_slack_error(response: Any) -> None:
+    if not isinstance(response, dict):
+        raise RuntimeError("Slack API 응답 형식이 올바르지 않습니다.")
     if isinstance(response, dict) and response.get("ok") is False:
         raise RuntimeError(f"Slack API 오류: {response.get('error', 'unknown_error')}")
 

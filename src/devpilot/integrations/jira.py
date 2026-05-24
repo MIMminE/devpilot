@@ -9,12 +9,18 @@ from devpilot.http import basic_auth_header, json_request
 class JiraClient:
     def __init__(self, config: JiraConfig) -> None:
         token = config.api_token
+        if not config.base_url:
+            raise RuntimeError("Jira Base URL이 설정되어 있지 않습니다. config.toml의 [jira].base_url 값을 입력해 주세요.")
+        if not config.email:
+            raise RuntimeError("Jira 이메일이 설정되어 있지 않습니다. config.toml의 [jira].email 값을 입력해 주세요.")
         if not token:
             raise RuntimeError("Jira API 토큰이 설정되어 있지 않습니다. config.toml의 [jira].api_token 값을 입력해 주세요.")
         self.config = config
         self.headers = {"Authorization": basic_auth_header(config.email, token)}
 
     def search(self, jql: str, *, max_results: int = 25) -> list[dict]:
+        if not jql.strip():
+            raise RuntimeError("Jira JQL이 비어 있습니다.")
         url = f"{self.config.base_url}/rest/api/3/search/jql"
         payload = json_request(
             "POST",
@@ -39,17 +45,24 @@ class JiraClient:
                 ],
             },
         )
+        if not isinstance(payload, dict):
+            raise RuntimeError("Jira search 응답 형식이 올바르지 않습니다.")
         return payload.get("issues", [])
 
     def issue(self, issue_key: str) -> dict:
+        if not issue_key.strip():
+            raise RuntimeError("Jira 이슈 키가 필요합니다.")
         url = f"{self.config.base_url}/rest/api/3/issue/{quote(issue_key)}"
-        return json_request(
+        payload = json_request(
             "GET",
             url,
             headers=self.headers,
             payload=None,
             timeout=30,
         )
+        if not isinstance(payload, dict):
+            raise RuntimeError("Jira issue 응답 형식이 올바르지 않습니다.")
+        return payload
 
     def create_issue(
         self,
@@ -99,8 +112,13 @@ class JiraClient:
         return matches[0]["accountId"]
 
     def find_users(self, query: str) -> list[dict]:
+        if not query.strip():
+            return []
         url = f"{self.config.base_url}/rest/api/3/user/search?query={quote(query)}&maxResults=5"
-        return json_request("GET", url, headers=self.headers)
+        payload = json_request("GET", url, headers=self.headers)
+        if not isinstance(payload, list):
+            raise RuntimeError("Jira user search 응답 형식이 올바르지 않습니다.")
+        return payload
 
 
 def _adf_text(text: str) -> dict:

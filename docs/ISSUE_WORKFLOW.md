@@ -1,6 +1,6 @@
 # Issue Workflow
 
-DevPilot의 Issue Workflow는 일감 하나가 들어온 뒤 작업, 테스트, 보고까지 이어지는 흐름을 로컬 상태로 관리한다. Git repository 관리는 핵심 전제이고, Jira와 Slack은 선택 연동이다.
+DevPilot의 Issue Workflow는 일감 하나가 들어온 뒤 분석, repository 확정, workspace 준비, AI 보조 구현, 테스트, 보고까지 이어지는 흐름을 로컬 상태로 관리한다. Git repository 관리는 핵심 전제이고, Jira와 Slack은 선택 연동이다.
 
 ## 목표
 
@@ -14,16 +14,17 @@ DevPilot의 Issue Workflow는 일감 하나가 들어온 뒤 작업, 테스트, 
 
 ```text
 일감 확인(Jira 또는 수동 등록)
--> Codex 1차 분석 요청
 -> Issue Workflow 시작
--> repository 연결
--> 일감 키 포함 브랜치 생성
--> Codex와 작업
--> 커밋 메시지 초안 생성
+-> Codex 1차 분석 요청
+-> repository 확정
+-> 일감 workspace와 작업 브랜치 생성
+-> Codex 워크플로우 컨텍스트로 구현
 -> 테스트 결과 기록
 -> 작업 보고 기록
--> 아침/저녁 브리핑에 반영
+-> 아침/저녁 브리핑과 기록 화면에 반영
 ```
+
+이 흐름의 핵심은 AI를 마지막 보고서 작성에만 쓰는 것이 아니라, 일감 사이사이에 두는 것이다. 초반에는 As-Is/To-Be와 작업 범위 판단을 돕고, workspace 준비 이후에는 일감 상태, 분석 결과, repository, 테스트/보고 기록을 포함한 컨텍스트 파일을 만들어 Codex 작업 루트를 연다.
 
 ## 상태
 
@@ -86,10 +87,26 @@ devpilot issue evening
 - 완료 후에는 `issue workspace cleanup`으로 worktree를 정리한다.
 - 변경 파일이 남아 있으면 cleanup은 멈춘다. 정말 제거해야 할 때만 `--force`를 사용한다.
 
+## 앱 화면 흐름
+
+macOS 앱의 `일감 처리 콘솔`은 위 CLI 흐름을 승인 단계로 보여준다.
+
+```text
+일감 수신 -> AI 분석 -> repo 확정 -> workspace 준비 -> 업무 처리 -> 테스트 -> 보고/완료
+```
+
+- `AI 분석` 단계에서는 Codex 1차 분석 요청서를 만들거나 Codex 스레드를 생성한다.
+- `repo 확정` 단계에서는 일감과 관리 repository를 연결한다.
+- `workspace 준비` 단계에서는 Jira 키가 포함된 worktree workspace를 생성한다.
+- `업무 처리` 단계에서는 워크플로우 컨텍스트 파일을 만들고 Codex 작업 루트를 연다.
+- `테스트`와 `보고/완료` 단계에서는 실행 결과와 보고 내용을 워크플로우 기록으로 남긴다.
+
+`AI 작업 지휘관` 패널은 현재 워크플로우 상태를 바탕으로 분석, 작업 계획, repository 후보, 브랜치 전략, 테스트 추천, 컨벤션 점검, 보고 초안을 한 화면에 정리한다.
+
 ## 브리핑 반영
 
 출근 브리핑은 `issue morning` 내용을 포함한다.
 
 퇴근 체크는 `issue evening` 내용을 포함한다.
 
-이 단계에서는 워크플로우 상태 저장과 CLI 흐름을 먼저 안정화한다. 포트폴리오 문서는 실제 사용성이 확인된 뒤 정리한다.
+이 단계에서는 워크플로우 상태 저장, CLI 흐름, 앱 승인 패널, Codex 작업 루트 연결까지 동작한다. 다음 개선은 실제 작업 결과를 바탕으로 테스트 명령 추천과 workspace 정리 자동화를 더 정교하게 만드는 것이다.

@@ -48,17 +48,7 @@ def create_codex_thread(
     workspace.mkdir(parents=True, exist_ok=True)
     codex = _codex_executable()
     started_at = time.monotonic()
-    process = subprocess.Popen(
-        [str(codex), "app-server", "--listen", "stdio://"],
-        cwd=str(workspace),
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        bufsize=1,
-    )
+    process = _start_app_server(codex, workspace)
     try:
         _send(process, 1, "initialize", {"clientInfo": {"name": "devpilot", "version": "0.1.0"}, "capabilities": {"experimentalApi": True}})
         _read_until_response(process, 1, started_at=started_at, timeout_seconds=timeout_seconds)
@@ -127,17 +117,7 @@ def send_codex_turn(
     workspace.mkdir(parents=True, exist_ok=True)
     codex = _codex_executable()
     started_at = time.monotonic()
-    process = subprocess.Popen(
-        [str(codex), "app-server", "--listen", "stdio://"],
-        cwd=str(workspace),
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        bufsize=1,
-    )
+    process = _start_app_server(codex, workspace)
     try:
         _send(process, 1, "initialize", {"clientInfo": {"name": "devpilot", "version": "0.1.0"}, "capabilities": {"experimentalApi": True}})
         _read_until_response(process, 1, started_at=started_at, timeout_seconds=timeout_seconds)
@@ -192,17 +172,7 @@ def send_codex_turn(
 def list_codex_projects(*, timeout_seconds: int = 20) -> list[CodexProjectSummary]:
     codex = _codex_executable()
     started_at = time.monotonic()
-    process = subprocess.Popen(
-        [str(codex), "app-server", "--listen", "stdio://"],
-        cwd=str(Path.home()),
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        bufsize=1,
-    )
+    process = _start_app_server(codex, Path.home())
     try:
         _send(process, 1, "initialize", {"clientInfo": {"name": "devpilot", "version": "0.1.0"}, "capabilities": {"experimentalApi": True}})
         _read_until_response(process, 1, started_at=started_at, timeout_seconds=timeout_seconds)
@@ -227,6 +197,27 @@ def _codex_executable() -> Path:
     if bundled.is_file():
         return bundled
     raise RuntimeError("Codex CLI를 찾지 못했습니다.")
+
+
+def _start_app_server(codex: Path, cwd: Path) -> subprocess.Popen[str]:
+    try:
+        return subprocess.Popen(
+            [str(codex), "app-server", "--listen", "stdio://"],
+            cwd=str(cwd),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"Codex CLI를 찾지 못했습니다: {codex}") from exc
+    except PermissionError as exc:
+        raise RuntimeError(f"Codex CLI 실행 권한이 없습니다: {codex}") from exc
+    except OSError as exc:
+        raise RuntimeError(f"Codex app-server 실행에 실패했습니다: {exc}") from exc
 
 
 def _thread_items(response: dict) -> list[dict]:
@@ -367,11 +358,11 @@ def _read_line(process: subprocess.Popen[str]) -> str:
     ready, _, _ = select.select([process.stdout], [], [], 0.25)
     if not ready:
         if process.poll() is not None:
-            raise RuntimeError("Codex app-server가 예상보다 먼저 종료되었습니다.")
+            raise RuntimeError(f"Codex app-server가 예상보다 먼저 종료되었습니다. exit={process.returncode}")
         return ""
     line = process.stdout.readline()
     if not line and process.poll() is not None:
-        raise RuntimeError("Codex app-server가 예상보다 먼저 종료되었습니다.")
+        raise RuntimeError(f"Codex app-server가 예상보다 먼저 종료되었습니다. exit={process.returncode}")
     return line.strip()
 
 
