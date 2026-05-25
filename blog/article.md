@@ -55,7 +55,7 @@ DevPilot를 만들면서 중요하게 본 지점은 기능 개수가 아니라, 
 
 DevPilot는 이 반복을 하나의 흐름으로 묶습니다.
 
-![DevPilot 일감 처리 콘솔](./images/06-issue-flow-console.png)
+![DevPilot 프로젝트와 일감 선택 흐름](./images/06-issue-flow-console.png)
 
 | 단계 | 화면에서 확인하는 것 | 효과 |
 | --- | --- | --- |
