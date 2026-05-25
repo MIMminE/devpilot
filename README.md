@@ -76,8 +76,6 @@ DevPilot의 핵심은 명령 실행 자체가 아니라, 명령 주변의 맥락
 
 실제 앱 화면을 기준으로 한 사용 설명서는 [`docs/USER_MANUAL.md`](docs/USER_MANUAL.md)에 정리했습니다. 공개용 캡처는 앱의 `마스킹` 모드를 켠 상태로 촬영해 Jira 키, 저장소명, 사람 이름, 커밋 메시지 같은 업무 정보를 샘플 값으로 대체했습니다.
 
-면접에서 설명할 설계 의도와 예상 질문은 [`docs/INTERVIEW_PREP.md`](docs/INTERVIEW_PREP.md)에 별도 학습 노트로 정리했습니다.
-
 | 화면 | 캡처 | 보여줄 내용 |
 |---|---|---|
 | 대시보드 | [`devpilot-dashboard.png`](docs/assets/screenshots/devpilot-dashboard.png) | 오늘 상황판, Codex 상태, Jira/저장소 요약 |
