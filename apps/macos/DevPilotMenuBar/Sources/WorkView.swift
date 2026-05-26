@@ -650,34 +650,50 @@ struct WorkView: View {
             } else if issueWorkflows.isEmpty {
                 EmptyDashboardState(systemImage: "checklist", title: "진행 중인 일감이 없습니다", message: "Jira 일감을 분석하거나 workspace를 만들면 이곳에서 단계별 진행 상태를 볼 수 있습니다.")
             } else {
-                HStack(alignment: .top, spacing: 12) {
-                    DashboardPanel(title: selectedIssueProject == "전체" ? "일감" : "\(selectedIssueProject) 일감", systemImage: "list.bullet") {
-                        EmptyView()
-                    } content: {
-                        VStack(alignment: .leading, spacing: 10) {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 6) {
-                                    issueProjectFilterChip("전체", count: issueWorkflows.count)
-                                    ForEach(issueProjectNames, id: \.self) { project in
-                                        issueProjectFilterChip(project, count: issueWorkflows.filter { issueProjectName($0) == project }.count)
-                                    }
-                                }
-                                .padding(.vertical, 1)
-                            }
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 12) {
+                        issueWorkflowListPanel
+                            .frame(width: 320)
 
-                            Divider()
-
-                            ForEach(filteredIssueWorkflows) { item in
-                                issueWorkflowListRow(item)
-                            }
+                        if let workflow = selectedIssueWorkflow {
+                            issueWorkflowDetail(workflow)
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
                         }
                     }
-                    .frame(width: 360)
 
-                    if let workflow = selectedIssueWorkflow {
-                        issueWorkflowDetail(workflow)
+                    VStack(alignment: .leading, spacing: 12) {
+                        issueWorkflowListPanel
                             .frame(maxWidth: .infinity, alignment: .topLeading)
+
+                        if let workflow = selectedIssueWorkflow {
+                            issueWorkflowDetail(workflow)
+                                .frame(maxWidth: .infinity, alignment: .topLeading)
+                        }
                     }
+                }
+            }
+        }
+    }
+
+    private var issueWorkflowListPanel: some View {
+        DashboardPanel(title: selectedIssueProject == "전체" ? "일감" : "\(selectedIssueProject) 일감", systemImage: "list.bullet") {
+            EmptyView()
+        } content: {
+            VStack(alignment: .leading, spacing: 10) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        issueProjectFilterChip("전체", count: issueWorkflows.count)
+                        ForEach(issueProjectNames, id: \.self) { project in
+                            issueProjectFilterChip(project, count: issueWorkflows.filter { issueProjectName($0) == project }.count)
+                        }
+                    }
+                    .padding(.vertical, 1)
+                }
+
+                Divider()
+
+                ForEach(filteredIssueWorkflows) { item in
+                    issueWorkflowListRow(item)
                 }
             }
         }
