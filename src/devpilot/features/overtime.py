@@ -81,6 +81,7 @@ def add_overtime_record(
     )
     state = read_state()
     records = [item for item in list(state.get("overtime_records") or []) if isinstance(item, dict)]
+    _ensure_no_duplicate_overtime_time(record, records)
     records.append(record)
     state["overtime_records"] = records[-1000:]
     write_state(state)
@@ -102,7 +103,7 @@ def update_overtime_record(
     for index, item in enumerate(records):
         if str(item.get("id") or "") != record_id:
             continue
-        records[index] = _build_record(
+        updated = _build_record(
             record_id=record_id,
             created_at=str(item.get("created_at") or ""),
             work_date=work_date,
@@ -112,6 +113,8 @@ def update_overtime_record(
             end_time=end_time,
             memo=memo,
         )
+        _ensure_no_duplicate_overtime_time(updated, records, exclude_id=record_id)
+        records[index] = updated
         state["overtime_records"] = records
         write_state(state)
         return _record_saved_message("연장 근무 기록을 수정했습니다.", records[index])
@@ -422,6 +425,55 @@ def _time_range_label(record: dict) -> str:
     if start_value and end_value:
         return f"{start_value}-{end_value}"
     return "-"
+
+
+def _ensure_no_duplicate_overtime_time(record: dict, records: list[dict], *, exclude_id: str = "") -> None:
+    for item in records:
+        if exclude_id and str(item.get("id") or "") == exclude_id:
+            continue
+        if _is_duplicate_overtime_time(record, item):
+            raise RuntimeError(
+                "\n".join(
+                    [
+                        "이미 겹치는 연장 근무 기록이 있습니다.",
+                        f"- 기존: {item.get('date') or '-'} {_time_range_label(item)} {item.get('hours') or '-'}h",
+                        f"- 신규: {record.get('date') or '-'} {_time_range_label(record)} {record.get('hours') or '-'}h",
+                    ]
+                )
+            )
+
+
+def _is_duplicate_overtime_time(left: dict, right: dict) -> bool:
+    left_range = _record_interval(left)
+    right_range = _record_interval(right)
+    if left_range and right_range:
+        return _intervals_overlap(left_range, right_range)
+    if left_range or right_range:
+        return False
+    return (
+        str(left.get("date") or "") == str(right.get("date") or "")
+        and str(left.get("effective_kind") or left.get("kind") or "") == str(right.get("effective_kind") or right.get("kind") or "")
+        and _decimal(str(left.get("hours") or "0")) == _decimal(str(right.get("hours") or "0"))
+    )
+
+
+def _record_interval(record: dict) -> tuple[datetime, datetime] | None:
+    work_date = str(record.get("date") or "")
+    start_value = str(record.get("start_time") or "").strip()
+    end_value = str(record.get("end_time") or "").strip()
+    if not work_date or not start_value or not end_value:
+        return None
+    start_dt = datetime.combine(date.fromisoformat(work_date), _parse_time(start_value))
+    end_dt = datetime.combine(date.fromisoformat(work_date), _parse_time(end_value))
+    if end_dt <= start_dt:
+        end_dt += timedelta(days=1)
+    return start_dt, end_dt
+
+
+def _intervals_overlap(left: tuple[datetime, datetime], right: tuple[datetime, datetime]) -> bool:
+    left_start, left_end = left
+    right_start, right_end = right
+    return max(left_start, right_start) < min(left_end, right_end)
 
 
 def _is_weekend(value: str) -> bool:
