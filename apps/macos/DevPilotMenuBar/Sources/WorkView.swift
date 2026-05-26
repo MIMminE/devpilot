@@ -42,6 +42,9 @@ struct WorkView: View {
     @State private var selectedIssueWorkflowKey = ""
     @State private var selectedIssueFlowStage = IssueFlowStage.analysis
     @State private var selectedIssueProject = "전체"
+    @State private var isIssueDirectorExpanded = false
+    @State private var isIssueTimelineExpanded = false
+    @State private var isIssueContextExpanded = false
     @State private var issueDirectorDrafts: [String: IssueDirectorRecord] = [:]
     @State private var loadingIssueDirectorKey = ""
     @State private var isLoadingIssueWorkflows = false
@@ -644,29 +647,28 @@ struct WorkView: View {
                 EmptyDashboardState(systemImage: "checklist", title: "진행 중인 일감이 없습니다", message: "Jira 일감을 분석하거나 workspace를 만들면 이곳에서 단계별 진행 상태를 볼 수 있습니다.")
             } else {
                 HStack(alignment: .top, spacing: 12) {
-                    DashboardPanel(title: "프로젝트", systemImage: "folder") {
-                        EmptyView()
-                    } content: {
-                        VStack(alignment: .leading, spacing: 10) {
-                            issueProjectFilterRow("전체", count: issueWorkflows.count)
-                            Divider()
-                            ForEach(issueProjectNames, id: \.self) { project in
-                                issueProjectFilterRow(project, count: issueWorkflows.filter { issueProjectName($0) == project }.count)
-                            }
-                        }
-                    }
-                    .frame(width: 190)
-
                     DashboardPanel(title: selectedIssueProject == "전체" ? "일감" : "\(selectedIssueProject) 일감", systemImage: "list.bullet") {
                         EmptyView()
                     } content: {
-                        VStack(spacing: 8) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 6) {
+                                    issueProjectFilterChip("전체", count: issueWorkflows.count)
+                                    ForEach(issueProjectNames, id: \.self) { project in
+                                        issueProjectFilterChip(project, count: issueWorkflows.filter { issueProjectName($0) == project }.count)
+                                    }
+                                }
+                                .padding(.vertical, 1)
+                            }
+
+                            Divider()
+
                             ForEach(filteredIssueWorkflows) { item in
                                 issueWorkflowListRow(item)
                             }
                         }
                     }
-                    .frame(width: 310)
+                    .frame(width: 360)
 
                     if let workflow = selectedIssueWorkflow {
                         issueWorkflowDetail(workflow)
@@ -674,6 +676,44 @@ struct WorkView: View {
                     }
                 }
             }
+        }
+    }
+
+    private func issueProjectFilterChip(_ project: String, count: Int) -> some View {
+        Button {
+            selectIssueProject(project)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: project == "전체" ? "tray.full" : "folder")
+                    .font(.caption.weight(.semibold))
+                Text(project)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(1)
+                Text("\(count)")
+                    .font(.caption2.weight(.bold))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(selectedIssueProject == project ? Color.white.opacity(0.32) : Color.secondary.opacity(0.12))
+                    .clipShape(Capsule())
+            }
+            .foregroundStyle(selectedIssueProject == project ? Color.accentColor : Color.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+            .background(selectedIssueProject == project ? Color.accentColor.opacity(0.15) : Color(nsColor: .controlBackgroundColor).opacity(0.5))
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func selectIssueProject(_ project: String) {
+        selectedIssueProject = project
+        let workflows = project == "전체" ? issueWorkflows : issueWorkflows.filter { issueProjectName($0) == project }
+        selectedIssueWorkflowKey = workflows.first?.issueKey ?? ""
+        isIssueDirectorExpanded = false
+        isIssueTimelineExpanded = false
+        isIssueContextExpanded = false
+        if let workflow = workflows.first {
+            selectedIssueFlowStage = nextIssueFlowStage(for: workflow)
         }
     }
 
@@ -702,12 +742,7 @@ struct WorkView: View {
 
     private func issueProjectFilterRow(_ project: String, count: Int) -> some View {
         Button {
-            selectedIssueProject = project
-            let workflows = project == "전체" ? issueWorkflows : issueWorkflows.filter { issueProjectName($0) == project }
-            selectedIssueWorkflowKey = workflows.first?.issueKey ?? ""
-            if let workflow = workflows.first {
-                selectedIssueFlowStage = nextIssueFlowStage(for: workflow)
-            }
+            selectIssueProject(project)
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: project == "전체" ? "tray.full" : "folder")
@@ -742,6 +777,9 @@ struct WorkView: View {
         Button {
             selectedIssueWorkflowKey = item.issueKey
             selectedIssueFlowStage = nextIssueFlowStage(for: item)
+            isIssueDirectorExpanded = false
+            isIssueTimelineExpanded = false
+            isIssueContextExpanded = false
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
@@ -770,6 +808,7 @@ struct WorkView: View {
         DashboardPanel(title: "\(displayIssueKey(workflow.issueKey)) 처리 흐름", systemImage: "arrow.triangle.branch") {
             HStack(spacing: 6) {
                 panelActionChip(title: "AI 지휘관", systemImage: "sparkles") {
+                    isIssueDirectorExpanded = true
                     Task { await loadIssueDirector(workflow, force: true) }
                 }
                 .disabled(runner.isRunning || loadingIssueDirectorKey == workflow.issueKey)
@@ -796,13 +835,135 @@ struct WorkView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                issueDirectorPanel(workflow)
-                issueWorkflowTimeline(workflow)
-                issueApprovalPanel(workflow)
+                issueCurrentStepPanel(workflow)
+                issueCompactStageStrip(workflow)
+
+                DisclosureGroup(isExpanded: $isIssueDirectorExpanded) {
+                    issueDirectorPanel(workflow)
+                        .padding(.top, 8)
+                } label: {
+                    issueDisclosureLabel(title: "AI 작업 지휘관", systemImage: "sparkles", detail: issueDirectorDrafts[workflow.issueKey]?.currentFocus ?? "분석, 계획, 테스트 추천 보기")
+                }
+                .onChange(of: isIssueDirectorExpanded) { expanded in
+                    if expanded {
+                        Task { await loadIssueDirector(workflow, force: false) }
+                    }
+                }
+
+                DisclosureGroup(isExpanded: $isIssueTimelineExpanded) {
+                    issueWorkflowTimeline(workflow)
+                        .padding(.top, 8)
+                } label: {
+                    issueDisclosureLabel(title: "전체 단계 상세", systemImage: "point.3.connected.trianglepath.dotted", detail: "단계별 결과와 보조 액션 보기")
+                }
+
+                DisclosureGroup(isExpanded: $isIssueContextExpanded) {
+                    issueApprovalPanel(workflow)
+                        .padding(.top, 8)
+                } label: {
+                    issueDisclosureLabel(title: "연결 정보", systemImage: "folder", detail: workflow.repositories.isEmpty ? "연결된 repository 없음" : "\(workflow.repositories.count)개 repository 연결")
+                }
             }
         }
-        .task(id: workflow.issueKey) {
-            await loadIssueDirector(workflow, force: false)
+    }
+
+    private func issueDisclosureLabel(title: String, systemImage: String, detail: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 18)
+            Text(title)
+                .font(.caption.weight(.semibold))
+            Text(detail.isEmpty ? "-" : detail)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer()
+        }
+        .padding(8)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.36))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func issueCurrentStepPanel(_ workflow: IssueWorkflowRecord) -> some View {
+        let stage = nextIssueFlowStage(for: workflow)
+        let state = workflowStageState(workflow, stage: stage)
+        let artifacts = workflowStageArtifacts(workflow, stage: stage)
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: state.systemImage)
+                    .foregroundStyle(state.tint)
+                    .font(.system(size: 18, weight: .semibold))
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("현재 승인 지점")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text(stage.title)
+                        .font(.subheadline.weight(.semibold))
+                }
+                Spacer()
+                flowTag(state.label, tint: state.tint)
+            }
+
+            Text(workflowStageDetail(workflow, stage: stage))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !artifacts.isEmpty {
+                HStack(spacing: 6) {
+                    ForEach(artifacts.prefix(3), id: \.self) { item in
+                        Text(item)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(Color(nsColor: .textBackgroundColor).opacity(0.54))
+                            .clipShape(Capsule())
+                    }
+                }
+            }
+
+            HStack(spacing: 8) {
+                Spacer()
+                workflowStageActionButtons(workflow, stage: stage)
+            }
+        }
+        .padding(12)
+        .background(state.tint.opacity(0.1))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(state.tint.opacity(0.24), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func issueCompactStageStrip(_ workflow: IssueWorkflowRecord) -> some View {
+        HStack(spacing: 6) {
+            ForEach(IssueFlowStage.allCases, id: \.self) { stage in
+                let state = workflowStageState(workflow, stage: stage)
+                Button {
+                    selectedIssueFlowStage = stage
+                    isIssueTimelineExpanded = true
+                } label: {
+                    VStack(spacing: 5) {
+                        Image(systemName: state.systemImage)
+                            .font(.caption.weight(.semibold))
+                        Text(stage.shortTitle)
+                            .font(.caption2.weight(.semibold))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(selectedIssueFlowStage == stage ? state.tint : Color.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(selectedIssueFlowStage == stage ? state.tint.opacity(0.14) : Color(nsColor: .controlBackgroundColor).opacity(0.34))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+                .buttonStyle(.plain)
+            }
         }
     }
 
@@ -4871,6 +5032,18 @@ private enum IssueFlowStage: CaseIterable {
         case .implementation: return "업무 처리"
         case .test: return "테스트"
         case .report: return "보고/완료"
+        }
+    }
+
+    var shortTitle: String {
+        switch self {
+        case .intake: return "수신"
+        case .analysis: return "분석"
+        case .repo: return "repo"
+        case .workspace: return "작업공간"
+        case .implementation: return "구현"
+        case .test: return "테스트"
+        case .report: return "보고"
         }
     }
 
