@@ -3385,7 +3385,7 @@ struct WorkView: View {
             if Task.isCancelled {
                 return
             }
-            guard !runner.isSetupOpen, !runner.isPersonalProfile, !runner.isRunning else {
+            guard !runner.isSetupOpen, !runner.isPersonalProfile, isJiraIntegrationEnabled, !runner.isRunning else {
                 continue
             }
             await checkNewJiraIssues(showEmptyResult: false, showFailureWindow: false)
@@ -4843,6 +4843,9 @@ struct WorkView: View {
             runner.sendLocalNotification(title: "새 Jira 일감", body: jiraNotificationBody(items: parsedItems, fallback: result.displayText))
         }
         if !result.succeeded || (showEmptyResult && !hasNewIssues) {
+            if result.displayText.contains("Jira 기능이 꺼져 있습니다.") {
+                return
+            }
             showNotice(title: "새 Jira 일감", message: result.displayText, succeeded: result.succeeded)
         }
     }

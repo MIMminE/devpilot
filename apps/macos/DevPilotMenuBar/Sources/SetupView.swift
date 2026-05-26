@@ -358,6 +358,12 @@ struct SetupView: View {
             VStack(alignment: .leading, spacing: 10) {
                 Toggle("Jira 연동 사용", isOn: $settings.jiraIntegrationEnabled)
                     .font(.headline)
+                    .onChange(of: settings.jiraIntegrationEnabled) { enabled in
+                        if !enabled {
+                            settings.jiraDailyScheduleEnabled = false
+                        }
+                        runner.saveSettings(settings)
+                    }
 
                 Group {
                     SettingsTextField(title: "기본 URL", placeholder: "https://start-today.atlassian.net", text: $settings.jiraBaseURL)
