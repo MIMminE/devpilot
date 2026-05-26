@@ -12,6 +12,33 @@ struct IssueRepositoryLinkRecord: Identifiable, Hashable {
     }
 }
 
+struct IssueProjectRecord: Identifiable, Decodable, Hashable {
+    let name: String
+    let jiraProjectKey: String
+    let implicit: Bool
+
+    var id: String { name }
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case jiraProjectKey = "jira_project_key"
+        case implicit
+    }
+
+    init(name: String, jiraProjectKey: String = "", implicit: Bool = false) {
+        self.name = name
+        self.jiraProjectKey = jiraProjectKey
+        self.implicit = implicit
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        jiraProjectKey = try container.decodeIfPresent(String.self, forKey: .jiraProjectKey) ?? ""
+        implicit = try container.decodeIfPresent(Bool.self, forKey: .implicit) ?? false
+    }
+}
+
 struct IssueWorkState {
     let linkedRepositories: [IssueRepositoryLinkRecord]
     let activeRepositories: [LocalRepositoryOption]

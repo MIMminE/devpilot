@@ -256,7 +256,7 @@ struct JiraQuickCreateSheet: View {
 }
 
 struct ManualIssueCreateSheet: View {
-    @Binding var project: String
+    let project: String
     @Binding var summary: String
     @Binding var detail: String
     @Binding var issueType: String
@@ -287,8 +287,15 @@ struct ManualIssueCreateSheet: View {
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                TextField("프로젝트 이름 또는 코드", text: $project)
-                    .textFieldStyle(.roundedBorder)
+                HStack(spacing: 8) {
+                    Label(project.isEmpty ? "프로젝트 미선택" : project, systemImage: "folder")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(project.isEmpty ? Color.orange : Color.accentColor)
+                    Spacer()
+                }
+                .padding(9)
+                .background(Color(nsColor: .controlBackgroundColor).opacity(0.55))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
 
                 HStack(spacing: 10) {
                     Picker("종류", selection: $issueType) {
@@ -330,5 +337,58 @@ struct ManualIssueCreateSheet: View {
         }
         .padding(20)
         .frame(width: 580)
+    }
+}
+
+struct IssueProjectCreateSheet: View {
+    @Binding var name: String
+    @Binding var jiraProjectKey: String
+    let isRunning: Bool
+    let onCancel: () -> Void
+    let onCreate: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 12) {
+                Image(systemName: "folder.badge.plus")
+                    .font(.system(size: 28, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 42, height: 42)
+                    .background(Color.accentColor.opacity(0.14))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("프로젝트 등록")
+                        .font(.title3.weight(.semibold))
+                    Text("프로젝트 아래에서 수동 일감을 만들거나 Jira 일감을 가져와 같은 처리 흐름으로 관리합니다.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                TextField("프로젝트 이름", text: $name)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Jira 프로젝트 키 (선택)", text: $jiraProjectKey)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            HStack {
+                Text("Jira 키는 Jira 연동을 켰을 때 해당 프로젝트 일감을 가져오는 기준으로 사용할 수 있습니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("취소", action: onCancel)
+                    .disabled(isRunning)
+                Button(isRunning ? "등록 중..." : "등록") {
+                    onCreate()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(isRunning || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(20)
+        .frame(width: 540)
     }
 }

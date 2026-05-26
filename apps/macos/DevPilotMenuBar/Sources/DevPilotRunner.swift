@@ -788,6 +788,46 @@ final class DevPilotRunner: NSObject, ObservableObject, NSWindowDelegate {
         return result
     }
 
+    func loadIssueProjects() async -> [IssueProjectRecord] {
+        let result = await Self.executeDetached(["issue", "projects", "list", "--format", "json"])
+        guard result.succeeded, let data = result.output.data(using: .utf8),
+              let projects = try? JSONDecoder().decode([IssueProjectRecord].self, from: data) else {
+            return []
+        }
+        return projects.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    }
+
+    func registerIssueProject(name: String, jiraProjectKey: String) async -> DevPilotCommandResult {
+        let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedName.isEmpty else {
+            return DevPilotCommandResult(succeeded: false, output: "", summary: "프로젝트 이름을 입력해 주세요.")
+        }
+        var arguments = ["issue", "projects", "add", normalizedName]
+        let normalizedJiraKey = jiraProjectKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !normalizedJiraKey.isEmpty {
+            arguments.append(contentsOf: ["--jira-project-key", normalizedJiraKey])
+        }
+        return await runDashboardCommand(
+            arguments,
+            runningStatus: "\(normalizedName) 프로젝트 등록 중...",
+            successStatus: "\(normalizedName) 프로젝트 등록 완료",
+            failureStatus: "\(normalizedName) 프로젝트 등록 실패"
+        )
+    }
+
+    func importJiraIssues(project: String) async -> DevPilotCommandResult {
+        let normalizedProject = project.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedProject.isEmpty else {
+            return DevPilotCommandResult(succeeded: false, output: "", summary: "프로젝트를 먼저 선택해 주세요.")
+        }
+        return await runDashboardCommand(
+            ["issue", "projects", "import-jira", normalizedProject],
+            runningStatus: "\(normalizedProject) Jira 일감 가져오는 중...",
+            successStatus: "\(normalizedProject) Jira 일감 가져오기 완료",
+            failureStatus: "\(normalizedProject) Jira 일감 가져오기 실패"
+        )
+    }
+
     func recommendIssueRepository(issue: String, summary: String) async -> DevPilotCommandResult {
         let result = await runDashboardCommand(
             ["dev", "recommend-repo", issue, "--summary", summary],

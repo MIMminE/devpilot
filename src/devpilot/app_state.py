@@ -155,6 +155,7 @@ def _initial_state() -> dict:
         "last_runs": {},
         "issue_repositories": {},
         "issue_workflows": {},
+        "issue_projects": {},
     }
 
 

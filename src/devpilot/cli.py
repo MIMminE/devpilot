@@ -28,6 +28,7 @@ from devpilot.features.dev_insights import (
 )
 from devpilot.features.doctor import run_doctor
 from devpilot.features.health import run_health
+from devpilot.features.issue_projects import add_issue_project, format_issue_projects, import_jira_project_issues
 from devpilot.features.issue_repositories import (
     format_issue_repository_links,
     link_issue_repository,
@@ -121,6 +122,16 @@ def build_parser() -> argparse.ArgumentParser:
     issue_report.add_argument("--done", action="store_true", help="보고와 함께 완료 처리")
     issue_show = issue_sub.add_parser("show", help="일감 워크플로우 상세 조회")
     issue_show.add_argument("issue_key", help="Jira 이슈 키")
+    issue_projects = issue_sub.add_parser("projects", help="일감 프로젝트 등록/조회")
+    issue_projects_sub = issue_projects.add_subparsers(dest="projects_command", required=True)
+    issue_projects_list = issue_projects_sub.add_parser("list", help="등록된 일감 프로젝트 조회")
+    issue_projects_list.add_argument("--format", choices=["text", "json"], default="text", help="출력 형식")
+    issue_projects_add = issue_projects_sub.add_parser("add", help="일감 프로젝트 등록")
+    issue_projects_add.add_argument("name", help="프로젝트 이름")
+    issue_projects_add.add_argument("--jira-project-key", default="", help="연결할 Jira 프로젝트 키")
+    issue_projects_import = issue_projects_sub.add_parser("import-jira", help="프로젝트의 Jira 일감을 워크플로우로 가져오기")
+    issue_projects_import.add_argument("name", help="프로젝트 이름")
+    issue_projects_import.add_argument("--max-results", type=int, default=20, help="가져올 최대 일감 수")
     issue_workspace = issue_sub.add_parser("workspace", help="일감 단위 worktree workspace 관리")
     issue_workspace_sub = issue_workspace.add_subparsers(dest="workspace_command", required=True)
     issue_workspace_prepare = issue_workspace_sub.add_parser("prepare", help="일감 workspace를 만들고 repository worktree를 배치")
@@ -454,6 +465,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.area == "issue" and args.command == "director":
         print(issue_director_briefing(config, args.issue_key, output_format=args.format, provider=args.provider, refresh=args.refresh))
         return 0
+
+    if args.area == "issue" and args.command == "projects":
+        if args.projects_command == "add":
+            project = add_issue_project(args.name, jira_project_key=args.jira_project_key)
+            print(f"프로젝트를 등록했습니다: {project.get('name')}")
+            return 0
+        if args.projects_command == "list":
+            print(format_issue_projects(output_format=args.format))
+            return 0
+        if args.projects_command == "import-jira":
+            print(import_jira_project_issues(config, args.name, max_results=args.max_results))
+            return 0
 
     if args.area == "issue" and args.command == "status":
         update_workflow_status(

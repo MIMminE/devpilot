@@ -39,6 +39,7 @@ struct WorkView: View {
     @State private var jiraLastUpdatedText = ""
     @State private var issueRepositoryLinks: [IssueRepositoryLinkRecord] = []
     @State private var issueWorkflows: [IssueWorkflowRecord] = []
+    @State private var issueProjects: [IssueProjectRecord] = []
     @State private var selectedIssueWorkflowKey = ""
     @State private var selectedIssueFlowStage = IssueFlowStage.analysis
     @State private var selectedIssueProject = "전체"
@@ -48,6 +49,9 @@ struct WorkView: View {
     @State private var issueDirectorDrafts: [String: IssueDirectorRecord] = [:]
     @State private var loadingIssueDirectorKey = ""
     @State private var isLoadingIssueWorkflows = false
+    @State private var isIssueProjectCreatePresented = false
+    @State private var newIssueProjectName = ""
+    @State private var newIssueProjectJiraKey = ""
     @State private var isManualIssueCreatePresented = false
     @State private var manualIssueProject = ""
     @State private var manualIssueSummary = ""
@@ -475,7 +479,7 @@ struct WorkView: View {
         }
         .sheet(isPresented: $isManualIssueCreatePresented) {
             ManualIssueCreateSheet(
-                project: $manualIssueProject,
+                project: manualIssueProject,
                 summary: $manualIssueSummary,
                 detail: $manualIssueDetail,
                 issueType: $manualIssueType,
@@ -485,6 +489,19 @@ struct WorkView: View {
                 },
                 onCreate: {
                     Task { await createManualIssue() }
+                }
+            )
+        }
+        .sheet(isPresented: $isIssueProjectCreatePresented) {
+            IssueProjectCreateSheet(
+                name: $newIssueProjectName,
+                jiraProjectKey: $newIssueProjectJiraKey,
+                isRunning: runner.isRunning,
+                onCancel: {
+                    isIssueProjectCreatePresented = false
+                },
+                onCreate: {
+                    Task { await createIssueProject() }
                 }
             )
         }
@@ -613,12 +630,18 @@ struct WorkView: View {
         VStack(alignment: .leading, spacing: 16) {
             DashboardPanel(title: "일감 처리 콘솔", systemImage: "point.3.connected.trianglepath.dotted") {
                 HStack(spacing: 6) {
+                    panelActionChip(title: "프로젝트 등록", systemImage: "folder.badge.plus") {
+                        isIssueProjectCreatePresented = true
+                    }
                     panelActionChip(title: "직접 등록", systemImage: "plus.app") {
-                        if manualIssueProject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, selectedIssueProject != "전체" {
-                            manualIssueProject = selectedIssueProject
-                        }
+                        prepareManualIssueProject()
                         isManualIssueCreatePresented = true
                     }
+                    .disabled(issueProjectNames.isEmpty)
+                    panelActionChip(title: "Jira 가져오기", systemImage: "tray.and.arrow.down") {
+                        Task { await importJiraIssuesForSelectedProject() }
+                    }
+                    .disabled(runner.isRunning || selectedIssueProject == "전체" || !isJiraIntegrationEnabled)
                     panelActionChip(title: "새로고침", systemImage: "arrow.clockwise") {
                         Task { await loadIssueWorkflows(force: true) }
                     }
@@ -770,7 +793,11 @@ struct WorkView: View {
     }
 
     private var issueProjectNames: [String] {
-        Array(Set(issueWorkflows.map(issueProjectName))).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        let registered = issueProjects.map(\.name)
+        let fromWorkflows = issueWorkflows.map(issueProjectName)
+        return Array(Set(registered + fromWorkflows))
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
     private var approvalWaitingCount: Int {
@@ -872,6 +899,14 @@ struct WorkView: View {
             return String(prefix)
         }
         return "Inbox"
+    }
+
+    private func prepareManualIssueProject() {
+        if selectedIssueProject != "전체" {
+            manualIssueProject = selectedIssueProject
+            return
+        }
+        manualIssueProject = issueProjectNames.first ?? ""
     }
 
     private func issueWorkflowListRow(_ item: IssueWorkflowRecord) -> some View {
@@ -4507,6 +4542,35 @@ struct WorkView: View {
         }
     }
 
+    private func createIssueProject() async {
+        let selected = newIssueProjectName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let result = await runner.registerIssueProject(name: newIssueProjectName, jiraProjectKey: newIssueProjectJiraKey)
+        lastMessage = result.displayText
+        showNotice(title: "프로젝트 등록", message: result.displayText, succeeded: result.succeeded)
+        if result.succeeded {
+            isIssueProjectCreatePresented = false
+            newIssueProjectName = ""
+            newIssueProjectJiraKey = ""
+            await loadIssueWorkflows(force: true)
+            if !selected.isEmpty {
+                selectIssueProject(selected)
+            }
+        }
+    }
+
+    private func importJiraIssuesForSelectedProject() async {
+        guard selectedIssueProject != "전체" else {
+            showNotice(title: "Jira 일감 가져오기", message: "프로젝트를 먼저 선택해 주세요.", succeeded: false)
+            return
+        }
+        let result = await runner.importJiraIssues(project: selectedIssueProject)
+        lastMessage = result.displayText
+        showNotice(title: "Jira 일감 가져오기", message: result.displayText, succeeded: result.succeeded)
+        if result.succeeded {
+            await loadIssueWorkflows(force: true)
+        }
+    }
+
     private func generatedManualIssueKey() -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -4598,8 +4662,11 @@ struct WorkView: View {
             return
         }
         isLoadingIssueWorkflows = true
-        issueWorkflows = await runner.loadIssueWorkflows()
-        if selectedIssueProject != "전체", !issueWorkflows.contains(where: { issueProjectName($0) == selectedIssueProject }) {
+        async let workflowsTask = runner.loadIssueWorkflows()
+        async let projectsTask = runner.loadIssueProjects()
+        issueWorkflows = await workflowsTask
+        issueProjects = await projectsTask
+        if selectedIssueProject != "전체", !issueProjectNames.contains(selectedIssueProject) {
             selectedIssueProject = "전체"
         }
         let workflows = filteredIssueWorkflows
