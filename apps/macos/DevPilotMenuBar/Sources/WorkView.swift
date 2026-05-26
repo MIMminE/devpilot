@@ -99,7 +99,6 @@ struct WorkView: View {
     @State private var overtimeNightMultiplier = "0.5"
     @State private var overtimeHolidayMultiplier = "0.5"
     @State private var overtimeRoundingMinutes = "10"
-    @State private var isOvertimeExpanded = false
     @State private var isOvertimeSettingsUnlocked = false
     @State private var overtimePasscodeInput = ""
     @State private var overtimeNewPasscode = ""
@@ -108,6 +107,8 @@ struct WorkView: View {
     @State private var overtimeBaseMonthlySalary = "0"
     @State private var overtimeInclusiveOvertimePay = "0"
     @State private var overtimeStatutoryBasePay = "0"
+    @State private var isOvertimeEditorPresented = false
+    @State private var isOvertimeSettingsPresented = false
 
     private var filteredRepositories: [LocalRepositoryOption] {
         let ordered = orderedRepositories(repositories)
@@ -504,6 +505,12 @@ struct WorkView: View {
                     Task { await createIssueProject() }
                 }
             )
+        }
+        .sheet(isPresented: $isOvertimeEditorPresented) {
+            overtimeEditorSheet
+        }
+        .sheet(isPresented: $isOvertimeSettingsPresented) {
+            overtimeSettingsSheet
         }
         .alert("변경 파일이 있습니다", isPresented: $showDirtyWarning, presenting: pendingAction) { _ in
             Button("확인", role: .cancel) {}
@@ -3776,49 +3783,50 @@ struct WorkView: View {
     }
 
     private var overtimePanel: some View {
-        DisclosureGroup(isExpanded: $isOvertimeExpanded) {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 10) {
-                    overtimeMetric(title: "총 기록", value: "\(overtimeSummary.totalHours)h")
-                    overtimeMetric(title: "포괄 포함", value: "\(overtimeSummary.includedHours)h")
-                    overtimeMetric(title: "추가 산정", value: "\(overtimeSummary.payableHours)h")
-                    overtimeMetric(title: "예상 추가 수당", value: "\(formattedAllowance) \(overtimeSummary.currency)")
-                }
-                if shouldShowOvertimeRateFallbackNotice {
-                    Label("월 기본급 기준 추정 시급 \(formattedEffectiveHourlyRate) \(overtimeSummary.currency)을 사용합니다.", systemImage: "info.circle")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                if overtimeSummary.settings.inclusiveSalaryEnabled {
-                    Label("월 포괄수당은 주 포괄 시간 × 4.345주 × 추정 시급 × 연장 배율로 자동 산정합니다. 현재 \(formattedIncludedAllowance) \(overtimeSummary.currency)", systemImage: "sum")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-
-                overtimeInputCard
-                Text(overtimeInputGuide)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-
-                overtimeSettingsPanel
-
-                if overtimeSummary.records.isEmpty {
-                    Text("이번 달 연장 근무 기록이 없습니다.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    overtimeRecentRecords
-                }
-            }
-            .padding(.top, 8)
-        } label: {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Label("연장 근무", systemImage: "clock.badge.exclamationmark")
                     .font(.headline)
                 Spacer()
-                Text("\(overtimeSummary.totalHours)h · \(formattedAllowance) \(overtimeSummary.currency)")
-                    .font(.caption.weight(.semibold))
+                Button {
+                    resetOvertimeForm()
+                    isOvertimeEditorPresented = true
+                } label: {
+                    Label("기록", systemImage: "plus")
+                }
+                Button {
+                    isOvertimeSettingsPresented = true
+                } label: {
+                    Label("설정", systemImage: "gearshape")
+                }
+            }
+
+            HStack(spacing: 10) {
+                overtimeMetric(title: "총 기록", value: "\(overtimeSummary.totalHours)h")
+                overtimeMetric(title: "포괄 포함", value: "\(overtimeSummary.includedHours)h")
+                overtimeMetric(title: "추가 산정", value: "\(overtimeSummary.payableHours)h")
+                overtimeMetric(title: "예상 추가 수당", value: "\(formattedAllowance) \(overtimeSummary.currency)")
+            }
+
+            if shouldShowOvertimeRateFallbackNotice {
+                Label("월 기본급 기준 추정 시급 \(formattedEffectiveHourlyRate) \(overtimeSummary.currency)을 사용합니다.", systemImage: "info.circle")
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
+            }
+            if overtimeSummary.settings.inclusiveSalaryEnabled {
+                Label("월 포괄수당 자동 산정: \(formattedIncludedAllowance) \(overtimeSummary.currency)", systemImage: "sum")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            Divider()
+
+            if overtimeSummary.records.isEmpty {
+                Text("이번 달 연장 근무 기록이 없습니다.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                overtimeRecentRecords
             }
         }
         .padding(12)
@@ -3830,19 +3838,40 @@ struct WorkView: View {
         )
     }
 
-    private var overtimeSettingsPanel: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            DisclosureGroup("계산 설정") {
-                if isOvertimeSettingsUnlocked {
-                    overtimeUnlockedSettings
-                } else {
-                    overtimeLockView
-                }
-                Text("실제 지급액은 회사 정책, 근로계약, 세전/세후 기준에 따라 달라질 수 있습니다.")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+    private var overtimeEditorSheet: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label(editingOvertimeRecordID.isEmpty ? "연장 근무 기록" : "연장 근무 수정", systemImage: "clock.badge.exclamationmark")
+                    .font(.title3.weight(.semibold))
+                Spacer()
             }
+            overtimeInputCard
+            Text(overtimeInputGuide)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
+        .padding(20)
+        .frame(width: 720)
+    }
+
+    private var overtimeSettingsSheet: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Label("연장 수당 계산 설정", systemImage: "gearshape")
+                    .font(.title3.weight(.semibold))
+                Spacer()
+            }
+            if isOvertimeSettingsUnlocked {
+                overtimeUnlockedSettings
+            } else {
+                overtimeLockView
+            }
+            Text("실제 지급액은 회사 정책, 근로계약, 세전/세후 기준에 따라 달라질 수 있습니다.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .padding(20)
+        .frame(width: 560)
     }
 
     private var overtimeInputCard: some View {
@@ -3861,6 +3890,7 @@ struct WorkView: View {
                     if !editingOvertimeRecordID.isEmpty {
                         Button("취소") {
                             resetOvertimeForm()
+                            isOvertimeEditorPresented = false
                         }
                     }
                     Button {
@@ -4256,6 +4286,7 @@ struct WorkView: View {
         showNotice(title: editingOvertimeRecordID.isEmpty ? "연장 근무 기록" : "연장 근무 수정", message: result.displayText, succeeded: result.succeeded)
         if result.succeeded {
             resetOvertimeForm()
+            isOvertimeEditorPresented = false
             overtimeSummary = await runner.loadOvertimeSummary()
             syncOvertimeSettings()
         }
@@ -4291,6 +4322,7 @@ struct WorkView: View {
             overtimeUsesTimeRange = false
             overtimeHours = item.hours
         }
+        isOvertimeEditorPresented = true
     }
 
     private func resetOvertimeForm() {
@@ -4315,6 +4347,7 @@ struct WorkView: View {
         lastMessage = result.displayText
         showNotice(title: "연장 수당 설정", message: result.displayText, succeeded: result.succeeded)
         if result.succeeded {
+            isOvertimeSettingsPresented = false
             overtimeSummary = await runner.loadOvertimeSummary()
             syncOvertimeSettings()
         }
