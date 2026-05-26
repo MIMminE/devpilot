@@ -3978,11 +3978,11 @@ struct WorkView: View {
                     Text(symbol)
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(symbol == "일" || symbol == "토" ? .secondary : .tertiary)
-                        .frame(width: 30)
+                        .frame(width: 34)
                 }
             }
 
-            LazyVGrid(columns: Array(repeating: GridItem(.fixed(30), spacing: 4), count: 7), spacing: 5) {
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(34), spacing: 4), count: 7), spacing: 6) {
                 ForEach(Array(overtimeCalendarDays().enumerated()), id: \.offset) { _, day in
                     overtimeCalendarDay(day)
                 }
@@ -4019,7 +4019,7 @@ struct WorkView: View {
                     Text("\(Calendar.current.component(.day, from: day))")
                         .font(.caption.weight(selected ? .bold : .regular))
                         .foregroundStyle(selected ? Color.white : (weekend ? Color.accentColor : Color.primary))
-                        .frame(width: 30, height: 26)
+                        .frame(width: 34, height: 32)
                         .background(
                             RoundedRectangle(cornerRadius: 7)
                                 .fill(selected ? Color.accentColor : (today ? Color.accentColor.opacity(0.14) : Color.clear))
@@ -4030,10 +4030,11 @@ struct WorkView: View {
                         )
                 }
                 .buttonStyle(.plain)
+                .contentShape(Rectangle())
                 .help(formatKoreanDate(day))
             } else {
                 Color.clear
-                    .frame(width: 30, height: 26)
+                    .frame(width: 34, height: 32)
             }
         }
     }
