@@ -256,13 +256,11 @@ struct JiraQuickCreateSheet: View {
 }
 
 struct ManualIssueCreateSheet: View {
-    @Binding var issueKey: String
     @Binding var project: String
     @Binding var summary: String
     @Binding var detail: String
     @Binding var issueType: String
     let isRunning: Bool
-    let onGenerateKey: () -> Void
     let onCancel: () -> Void
     let onCreate: () -> Void
 
@@ -289,16 +287,6 @@ struct ManualIssueCreateSheet: View {
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    TextField("LOCAL-20260522-001", text: $issueKey)
-                        .textFieldStyle(.roundedBorder)
-                    Button {
-                        onGenerateKey()
-                    } label: {
-                        Label("키 생성", systemImage: "wand.and.stars")
-                    }
-                }
-
                 TextField("프로젝트 이름 또는 코드", text: $project)
                     .textFieldStyle(.roundedBorder)
 
@@ -337,7 +325,7 @@ struct ManualIssueCreateSheet: View {
                     onCreate()
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(isRunning || issueKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(isRunning || summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
         .padding(20)

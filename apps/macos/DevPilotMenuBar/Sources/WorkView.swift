@@ -49,7 +49,6 @@ struct WorkView: View {
     @State private var loadingIssueDirectorKey = ""
     @State private var isLoadingIssueWorkflows = false
     @State private var isManualIssueCreatePresented = false
-    @State private var manualIssueKey = ""
     @State private var manualIssueProject = ""
     @State private var manualIssueSummary = ""
     @State private var manualIssueDetail = ""
@@ -476,15 +475,11 @@ struct WorkView: View {
         }
         .sheet(isPresented: $isManualIssueCreatePresented) {
             ManualIssueCreateSheet(
-                issueKey: $manualIssueKey,
                 project: $manualIssueProject,
                 summary: $manualIssueSummary,
                 detail: $manualIssueDetail,
                 issueType: $manualIssueType,
                 isRunning: runner.isRunning,
-                onGenerateKey: {
-                    manualIssueKey = generatedManualIssueKey()
-                },
                 onCancel: {
                     isManualIssueCreatePresented = false
                 },
@@ -619,9 +614,6 @@ struct WorkView: View {
             DashboardPanel(title: "일감 처리 콘솔", systemImage: "point.3.connected.trianglepath.dotted") {
                 HStack(spacing: 6) {
                     panelActionChip(title: "직접 등록", systemImage: "plus.app") {
-                        if manualIssueKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                            manualIssueKey = generatedManualIssueKey()
-                        }
                         if manualIssueProject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, selectedIssueProject != "전체" {
                             manualIssueProject = selectedIssueProject
                         }
@@ -4496,7 +4488,7 @@ struct WorkView: View {
     }
 
     private func createManualIssue() async {
-        let key = manualIssueKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? generatedManualIssueKey() : manualIssueKey
+        let key = generatedManualIssueKey()
         let project = manualIssueProject.trimmingCharacters(in: .whitespacesAndNewlines)
         let summary = manualIssueSummary.trimmingCharacters(in: .whitespacesAndNewlines)
         let detail = manualIssueDetail.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -4507,7 +4499,6 @@ struct WorkView: View {
         showNotice(title: "직접 일감 등록", message: result.displayText, succeeded: result.succeeded)
         if result.succeeded {
             isManualIssueCreatePresented = false
-            manualIssueKey = ""
             manualIssueProject = ""
             manualIssueSummary = ""
             manualIssueDetail = ""
