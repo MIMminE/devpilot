@@ -4,7 +4,7 @@ DevPilot의 Issue Workflow는 일감 하나가 들어온 뒤 분석, repository 
 
 ## 목표
 
-- Jira 또는 수동 등록 일감과 repository, 브랜치, 테스트 결과, 작업 보고를 하나의 세션으로 연결한다.
+- 프로젝트별로 Jira 또는 수동 등록 일감을 부여하고, 각 일감의 repository, 브랜치, 테스트 결과, 작업 보고를 하나의 세션으로 연결한다.
 - Jira 상세 또는 수동 입력 내용을 기반으로 Codex 1차 분석 요청서를 만들고 신규 기능/As-Is/To-Be 판단을 먼저 정리한다.
 - 아침 브리핑에서는 미완료 일감의 현재 진행도와 다음 행동을 보여준다.
 - 저녁 브리핑에서는 완료/진행 중/막힘 상태를 정리해 오늘 한 일과 내일 이어갈 일을 만든다.
@@ -13,7 +13,8 @@ DevPilot의 Issue Workflow는 일감 하나가 들어온 뒤 분석, repository 
 ## 기본 흐름
 
 ```text
-일감 확인(Jira 또는 수동 등록)
+프로젝트 선택/생성
+-> 프로젝트별 일감 부여(Jira 가져오기 또는 수동 등록)
 -> Issue Workflow 시작
 -> Codex 1차 분석 요청
 -> repository 확정
@@ -67,6 +68,18 @@ devpilot issue evening
 
 `issue start`의 `--project`는 Jira 없이 직접 등록한 일감도 프로젝트 하위로 묶기 위한 값이다. 값이 없으면 Jira 키 접두어를 프로젝트처럼 보여주고, `LOCAL-*` 일감은 `Inbox`로 분류한다.
 
+프로젝트 자체는 `manual` 또는 `jira` 관리 방식으로 등록한다.
+
+```bash
+devpilot issue projects add WMS --management-type manual
+devpilot issue projects add LMS --management-type jira --jira-project-key LMS
+devpilot issue projects import-jira LMS
+```
+
+- `manual`: Jira 없이 수동 일감을 등록하고 Git/workspace 중심으로 처리한다.
+- `jira`: Jira 프로젝트 키를 기준으로 일감을 가져오고 같은 workflow로 처리한다.
+- 각 프로젝트 아래의 일감은 독립적인 workflow를 가진다.
+
 ## 일감 Workspace
 
 `issue workspace prepare`는 일감 전용 폴더를 만들고 필요한 repository를 Git worktree로 배치한다. 같은 원본 repository라도 일감마다 다른 작업 폴더와 작업 브랜치를 가질 수 있다.
@@ -94,9 +107,10 @@ macOS 앱의 `일감 처리 콘솔`은 위 CLI 흐름을 승인 단계로 보여
 ![DevPilot 일감 처리 콘솔](assets/screenshots/devpilot-issue-flow.png)
 
 ```text
-일감 수신 -> AI 분석 -> repo 확정 -> workspace 준비 -> 업무 처리 -> 테스트 -> 보고/완료
+프로젝트 선택 -> 일감 부여 -> AI 분석 -> repo 확정 -> workspace 준비 -> 업무 처리 -> 테스트 -> 보고/완료
 ```
 
+- `프로젝트별 일감 부여` 패널에서는 프로젝트 카드에서 바로 수동 일감 등록 또는 Jira 일감 가져오기를 실행한다.
 - `AI 분석` 단계에서는 Codex 1차 분석 요청서를 만들거나 Codex 스레드를 생성한다.
 - `repo 확정` 단계에서는 일감과 관리 repository를 연결한다.
 - `workspace 준비` 단계에서는 Jira 키가 포함된 worktree workspace를 생성한다.

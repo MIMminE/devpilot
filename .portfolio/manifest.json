@@ -1,10 +1,10 @@
 {
   "id": "devpilot",
   "title": "DevPilot",
-  "subtitle": "Jira, Git 저장소, Codex, 보고서를 연결하는 macOS 개인 업무 자동화 앱",
+  "subtitle": "프로젝트별 일감 처리와 Git, Codex, 보고서를 연결하는 macOS 개인 업무 자동화 앱",
   "category": "실무 도메인형",
   "status": "Portfolio Ready",
-  "summary": "개발자의 하루 업무 흐름을 Jira 일감, 로컬 Git 저장소, Codex 작업 요청, 보고서, 기록으로 연결한 SwiftUI macOS 앱과 Python CLI 기반 자동화 프로젝트입니다.",
+  "summary": "개발자의 하루 업무 흐름을 프로젝트별 일감, 로컬 Git 저장소, Codex 작업 요청, 보고서, 기록으로 연결한 SwiftUI macOS 앱과 Python CLI 기반 자동화 프로젝트입니다.",
   "stacks": [
     "SwiftUI",
     "macOS",
@@ -33,6 +33,11 @@
     {
       "label": "제품 기획안",
       "url": "docs/PRODUCT_PLAN.md",
+      "type": "docs"
+    },
+    {
+      "label": "기능 분류와 보완점",
+      "url": "docs/FUNCTION_REVIEW.md",
       "type": "docs"
     }
   ]
