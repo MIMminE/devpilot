@@ -12,9 +12,7 @@ def run_doctor(config: AppConfig) -> str:
         _check("git_author", bool(config.general.git_author), config.general.git_author),
         _check("work_end_time", bool(config.general.work_end_time), config.general.work_end_time),
         _check("data_dir", True, str(config.general.data_dir)),
-        _check("jira.base_url", bool(config.jira.base_url), config.jira.base_url),
-        _check("jira.email", bool(config.jira.email), config.jira.email),
-        _secret_check("jira.api_token", bool(config.jira.api_token), "config.toml에 입력 필요"),
+        *(_jira_checks(config) if config.features.jira else [_check("jira.integration", True, "선택 기능 비활성화")]),
         _check("slack.mode", config.slack.mode == "oauth", "oauth"),
         _secret_check("slack.default", config.slack.destination_configured(), "기본 Slack 채널"),
         _secret_check("slack.test", config.slack.destination_configured("test"), "테스트 메시지 채널"),
@@ -40,6 +38,14 @@ def run_doctor(config: AppConfig) -> str:
         f"관리 대상 Git repository: {managed_repos}개",
     ]
     return "\n".join(lines)
+
+
+def _jira_checks(config: AppConfig) -> list[str]:
+    return [
+        _check("jira.base_url", bool(config.jira.base_url), config.jira.base_url),
+        _check("jira.email", bool(config.jira.email), config.jira.email),
+        _secret_check("jira.api_token", bool(config.jira.api_token), "config.toml에 입력 필요"),
+    ]
 
 
 def _check(name: str, ok: bool, detail: str) -> str:

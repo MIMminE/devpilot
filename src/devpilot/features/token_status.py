@@ -20,6 +20,7 @@ def token_status(config: AppConfig, *, output_format: str = "text") -> str:
             config.jira.api_token,
             metadata,
             required=False,
+            enabled=config.features.jira,
         ),
         _token_row("slack", "Slack Bot Token", bool(config.slack.bot_token), config.slack.bot_token, metadata, required=False),
         _token_row("openai", "OpenAI API Key", bool(config.openai.api_key), config.openai.api_key, metadata),
@@ -39,10 +40,24 @@ def _token_row(
     metadata: dict[str, dict[str, Any]],
     *,
     required: bool = True,
+    enabled: bool = True,
 ) -> dict[str, Any]:
     meta = metadata.get(key, {})
     expires_at = str(meta.get("expires_at") or "").strip()
     days_remaining = _days_remaining(expires_at)
+    if not enabled:
+        return {
+            "id": key,
+            "name": name,
+            "configured": configured,
+            "required": False,
+            "status": "optional",
+            "detail": "선택 기능 비활성화. 수동 일감 등록과 Git 중심 흐름은 그대로 사용할 수 있습니다.",
+            "expires_at": expires_at,
+            "days_remaining": days_remaining,
+            "source": str(meta.get("source") or "config.toml"),
+            "token_hint": "",
+        }
     status, detail = _status(configured, expires_at, days_remaining, required=required)
     if configured and not expires_at:
         detail = "설정됨. 만료일은 자동 확인이 어려워 별도 등록이 필요합니다."

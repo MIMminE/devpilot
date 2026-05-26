@@ -157,6 +157,10 @@ struct WorkView: View {
         }.count
     }
 
+    private var isJiraIntegrationEnabled: Bool {
+        runner.loadSettings().jiraIntegrationEnabled
+    }
+
     private var recentBriefingMemories: [String] {
         briefingMemoryLog
             .split(separator: "\n")
@@ -1740,12 +1744,14 @@ struct WorkView: View {
                     panelActionChip(title: "새로고침", systemImage: "arrow.clockwise") {
                         Task { await loadJiraMorningItems(notifyLocal: false) }
                     }
-                    .disabled(runner.isRunning)
+                    .disabled(runner.isRunning || !isJiraIntegrationEnabled)
                 }
             }
         } content: {
             if runner.isPersonalProfile {
                 EmptyDashboardState(systemImage: "checklist", title: "개인 작업 소스 연결 전", message: "개인 프로젝트용 이슈 소스를 붙이면 오늘 할 일이 표시됩니다.")
+            } else if !isJiraIntegrationEnabled {
+                EmptyDashboardState(systemImage: "checklist", title: "Jira 연동 꺼짐", message: "수동 일감 등록과 Git 중심 흐름으로 오늘 작업을 이어갈 수 있습니다.")
             } else if jiraMorningItems.isEmpty {
                 EmptyDashboardState(systemImage: "checklist", title: "오늘 할 일이 비어 있습니다", message: "앱 실행 시 Jira 일감을 자동으로 가져옵니다.")
             } else {
@@ -1896,9 +1902,9 @@ struct WorkView: View {
                 panelActionChip(title: "새로고침", systemImage: "arrow.clockwise") {
                     Task { await loadJiraMorningItems(notifyLocal: false) }
                 }
-                .disabled(runner.isRunning || runner.isPersonalProfile)
+                .disabled(runner.isRunning || runner.isPersonalProfile || !isJiraIntegrationEnabled)
 
-                if !runner.isPersonalProfile {
+                if !runner.isPersonalProfile && isJiraIntegrationEnabled {
                     panelActionChip(title: "일감", systemImage: "plus.app") {
                         isJiraQuickCreatePresented = true
                     }
@@ -1909,6 +1915,8 @@ struct WorkView: View {
             VStack(alignment: .leading, spacing: 12) {
                 if runner.isPersonalProfile {
                     EmptyDashboardState(systemImage: "checklist", title: "개인 할 일 연결 전", message: "개인 프로젝트용 이슈 소스를 붙이면 이곳에 표시합니다.")
+                } else if !isJiraIntegrationEnabled {
+                    EmptyDashboardState(systemImage: "checklist", title: "Jira 연동 꺼짐", message: "수동 일감 등록으로 동일한 일감 처리 흐름을 사용할 수 있습니다.")
                 } else if jiraMorningItems.isEmpty {
                     EmptyDashboardState(systemImage: "checklist", title: "Jira 일감 없음", message: "앱 실행 시 내게 할당된 Jira 업무를 자동으로 가져옵니다.")
                 } else {
@@ -2269,10 +2277,12 @@ struct WorkView: View {
             panelActionChip(title: "새로고침", systemImage: "arrow.clockwise") {
                 Task { await loadJiraTeamFlow() }
             }
-            .disabled(runner.isRunning)
+            .disabled(runner.isRunning || !isJiraIntegrationEnabled)
         } content: {
             VStack(alignment: .leading, spacing: 10) {
-                if jiraTeamFlowItems.isEmpty {
+                if !isJiraIntegrationEnabled {
+                    EmptyDashboardState(systemImage: "arrow.triangle.branch", title: "Jira 연동 꺼짐", message: "팀 Jira 흐름 조회는 실행하지 않습니다.")
+                } else if jiraTeamFlowItems.isEmpty {
                     EmptyDashboardState(systemImage: "arrow.triangle.branch", title: "팀 흐름을 불러오는 중입니다", message: "앱 실행 시 최근 7일 기준 Jira 담당/처리 흐름을 자동으로 조회합니다.")
                 } else {
                     let grouped = Dictionary(grouping: jiraTeamFlowItems, by: \.status)
@@ -2604,18 +2614,18 @@ struct WorkView: View {
                         DashboardButton(title: "아침 일감 새로고침", systemImage: "arrow.clockwise") {
                             Task { await loadJiraMorningItems(notifyLocal: true) }
                         }
-                        .disabled(runner.isRunning)
+                        .disabled(runner.isRunning || !isJiraIntegrationEnabled)
 
                         DashboardButton(title: "새 일감 확인", systemImage: "bell.badge") {
                             Task { await checkNewJiraIssues(showEmptyResult: true) }
                         }
-                        .disabled(runner.isRunning)
+                        .disabled(runner.isRunning || !isJiraIntegrationEnabled)
 
                         Spacer()
                     }
 
                     HStack(spacing: 8) {
-                        Label("Slack 전송 없이 앱 안에서 일감을 확인합니다.", systemImage: "rectangle.stack")
+                        Label(isJiraIntegrationEnabled ? "Slack 전송 없이 앱 안에서 일감을 확인합니다." : "Jira 연동이 꺼져 있어 인증 확인과 자동 조회를 실행하지 않습니다.", systemImage: "rectangle.stack")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()
@@ -2632,16 +2642,20 @@ struct WorkView: View {
                 title: "내 아침 일감",
                 systemImage: "sun.max",
                 items: jiraMorningItems,
-                emptyTitle: "아직 불러온 Jira 일감이 없습니다",
-                emptyMessage: runner.isRunning ? "Jira 일감을 자동으로 불러오는 중입니다." : "Jira 메뉴에 들어오면 내게 할당된 미처리 일감이 자동으로 표시됩니다."
+                emptyTitle: isJiraIntegrationEnabled ? "아직 불러온 Jira 일감이 없습니다" : "Jira 연동 꺼짐",
+                emptyMessage: isJiraIntegrationEnabled
+                    ? (runner.isRunning ? "Jira 일감을 자동으로 불러오는 중입니다." : "Jira 메뉴에 들어오면 내게 할당된 미처리 일감이 자동으로 표시됩니다.")
+                    : "수동 일감 등록으로 같은 처리 흐름을 사용할 수 있습니다."
             )
 
             jiraListPanel(
                 title: "새로 등록된 일감",
                 systemImage: "bell.badge",
                 items: jiraNewItems,
-                emptyTitle: "새로 감지된 Jira 일감이 없습니다",
-                emptyMessage: "업무 프로필에서는 5분마다 새 일감을 확인하고, 발견되면 이 목록과 macOS 알림에 함께 표시합니다."
+                emptyTitle: isJiraIntegrationEnabled ? "새로 감지된 Jira 일감이 없습니다" : "Jira 감시 꺼짐",
+                emptyMessage: isJiraIntegrationEnabled
+                    ? "업무 프로필에서는 5분마다 새 일감을 확인하고, 발견되면 이 목록과 macOS 알림에 함께 표시합니다."
+                    : "Jira 연동을 켜기 전까지 새 일감 감시는 실행하지 않습니다."
             )
         }
     }
@@ -4387,7 +4401,7 @@ struct WorkView: View {
     }
 
     private func preloadBriefingData() async {
-        guard !runner.isPersonalProfile, !hasPreloadedBriefingData else {
+        guard !runner.isPersonalProfile, isJiraIntegrationEnabled, !hasPreloadedBriefingData else {
             return
         }
         hasPreloadedBriefingData = true
@@ -4396,7 +4410,7 @@ struct WorkView: View {
     }
 
     private func autoLoadJiraMorningItemsIfNeeded() async {
-        guard selectedSection == "jira", !runner.isPersonalProfile, !hasAutoLoadedJiraMorningItems, !runner.isRunning else {
+        guard selectedSection == "jira", !runner.isPersonalProfile, isJiraIntegrationEnabled, !hasAutoLoadedJiraMorningItems, !runner.isRunning else {
             return
         }
         hasAutoLoadedJiraMorningItems = true
@@ -4788,6 +4802,12 @@ struct WorkView: View {
     }
 
     private func loadJiraMorningItems(notifyLocal: Bool, showFailureNotice: Bool) async {
+        guard isJiraIntegrationEnabled else {
+            jiraMorningItems = []
+            jiraLastUpdatedText = "Jira 연동 꺼짐"
+            lastMessage = "Jira 연동이 꺼져 있어 수동 일감 등록 흐름으로 진행합니다."
+            return
+        }
         let result = await runner.runDashboardCommand(
             ["jira", "today"],
             runningStatus: "Jira 아침 일감을 불러오는 중...",
@@ -4807,6 +4827,12 @@ struct WorkView: View {
     }
 
     private func checkNewJiraIssues(showEmptyResult: Bool, showFailureWindow: Bool = true) async {
+        guard isJiraIntegrationEnabled else {
+            jiraNewItems = []
+            jiraLastUpdatedText = "Jira 연동 꺼짐"
+            lastMessage = "Jira 연동이 꺼져 있어 새 Jira 일감 감시는 실행하지 않습니다."
+            return
+        }
         let result = await runner.checkNewJiraIssues(showFailureWindow: showFailureWindow)
         lastMessage = result.displayText
         let hasNewIssues = result.displayText.hasPrefix("새로 등록된 Jira 일감")
@@ -4826,6 +4852,11 @@ struct WorkView: View {
     }
 
     private func loadJiraTeamFlow(showFailureNotice: Bool) async {
+        guard isJiraIntegrationEnabled else {
+            jiraTeamFlowItems = []
+            lastMessage = "Jira 연동이 꺼져 있어 팀 Jira 흐름 조회는 실행하지 않습니다."
+            return
+        }
         let result = await runner.runDashboardCommand(
             ["jira", "flow", "--format", "tsv", "--days", "7"],
             runningStatus: "팀 Jira 흐름을 불러오는 중...",
