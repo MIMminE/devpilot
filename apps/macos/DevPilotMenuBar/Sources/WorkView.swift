@@ -3245,19 +3245,11 @@ struct WorkView: View {
                         VStack(spacing: 4) {
                             Text(day == 0 ? "" : "\(day)")
                                 .font(.caption.weight(.semibold))
-                            HStack(spacing: 2) {
-                                ForEach(markers.prefix(4), id: \.kind) { marker in
-                                    Circle()
-                                        .fill(marker.color)
-                                        .frame(width: 5, height: 5)
-                                }
-                            }
-                            .frame(height: 5)
-                            .frame(maxWidth: .infinity)
+                            recordCalendarMarkerStrip(markers)
                         }
                         .frame(height: 38)
                         .frame(maxWidth: .infinity)
-                        .background(calendarDayBackground(day: day, reports: reports))
+                        .background(calendarDayBackground(day: day, reports: reports, markers: markers))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
                     .buttonStyle(.plain)
@@ -3272,6 +3264,8 @@ struct WorkView: View {
                 jiraCount: selectedDayJiraFlowItems.count,
                 overtimeCount: selectedDayOvertimeRecords.count
             )
+
+            recordCalendarLegend
 
             if !submittedReports.isEmpty {
                 VStack(alignment: .leading, spacing: 7) {
@@ -3323,6 +3317,39 @@ struct WorkView: View {
             items: recordTimelineItems,
             summary: recordDaySummaryText
         )
+    }
+
+    private var recordCalendarLegend: some View {
+        HStack(spacing: 10) {
+            recordCalendarLegendItem("보고서", color: recordMarkerColor("report"))
+            recordCalendarLegendItem("메모", color: recordMarkerColor("memo"))
+            recordCalendarLegendItem("Jira", color: recordMarkerColor("jira"))
+            recordCalendarLegendItem("연장", color: recordMarkerColor("overtime"))
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func recordCalendarLegendItem(_ title: String, color: Color) -> some View {
+        HStack(spacing: 4) {
+            RoundedRectangle(cornerRadius: 2)
+                .fill(color)
+                .frame(width: 10, height: 4)
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func recordCalendarMarkerStrip(_ markers: [RecordCalendarMarker]) -> some View {
+        HStack(spacing: 2) {
+            ForEach(markers.prefix(4), id: \.kind) { marker in
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(marker.color)
+                    .frame(width: 8, height: 4)
+            }
+        }
+        .frame(height: 5)
+        .frame(maxWidth: .infinity)
     }
 
     private var recordDaySummaryText: String {
@@ -4475,23 +4502,33 @@ struct WorkView: View {
         var markers: [RecordCalendarMarker] = []
         let reportCount = submittedReports.filter { $0.date == dateText }.count
         if reportCount > 0 {
-            markers.append(RecordCalendarMarker(kind: "report", label: "보고서", count: reportCount, color: .blue))
+            markers.append(RecordCalendarMarker(kind: "report", label: "보고서", count: reportCount, color: recordMarkerColor("report")))
         }
         let memoCount = workMemos.filter { $0.date.hasPrefix(dateText) || $0.createdAt.hasPrefix(dateText) }.count
         if memoCount > 0 {
-            markers.append(RecordCalendarMarker(kind: "memo", label: "메모", count: memoCount, color: .purple))
+            markers.append(RecordCalendarMarker(kind: "memo", label: "메모", count: memoCount, color: recordMarkerColor("memo")))
         }
         let jiraCount = jiraTeamFlowItems.filter { item in
             item.created.hasPrefix(dateText) || item.updated.hasPrefix(dateText) || item.due.hasPrefix(dateText)
         }.count
         if jiraCount > 0 {
-            markers.append(RecordCalendarMarker(kind: "jira", label: "Jira", count: jiraCount, color: .orange))
+            markers.append(RecordCalendarMarker(kind: "jira", label: "Jira", count: jiraCount, color: recordMarkerColor("jira")))
         }
         let overtimeCount = overtimeSummary.records.filter { $0.date == dateText }.count
         if overtimeCount > 0 {
-            markers.append(RecordCalendarMarker(kind: "overtime", label: "연장", count: overtimeCount, color: .green))
+            markers.append(RecordCalendarMarker(kind: "overtime", label: "연장", count: overtimeCount, color: recordMarkerColor("overtime")))
         }
         return markers
+    }
+
+    private func recordMarkerColor(_ kind: String) -> Color {
+        switch kind {
+        case "report": return .blue
+        case "memo": return .purple
+        case "jira": return .orange
+        case "overtime": return .red
+        default: return .secondary
+        }
     }
 
     private func currentMonthDate(day: Int) -> Date? {
@@ -4514,7 +4551,7 @@ struct WorkView: View {
         return "\(dateText) · \(markers.map { "\($0.label) \($0.count)개" }.joined(separator: ", "))"
     }
 
-    private func calendarDayBackground(day: Int, reports: [SubmittedReportRecord]) -> Color {
+    private func calendarDayBackground(day: Int, reports: [SubmittedReportRecord], markers: [RecordCalendarMarker]) -> Color {
         guard day > 0 else {
             return Color.clear
         }
@@ -4525,7 +4562,7 @@ struct WorkView: View {
         if reports.contains(where: { $0.id == selectedReportID }) {
             return Color.accentColor.opacity(0.18)
         }
-        if !reports.isEmpty {
+        if !markers.isEmpty {
             return Color.accentColor.opacity(0.08)
         }
         return Color(nsColor: .controlBackgroundColor).opacity(0.55)
