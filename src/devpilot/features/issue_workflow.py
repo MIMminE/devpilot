@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import json
 from pathlib import Path
+import re
 import shlex
 import subprocess
 import time
@@ -77,14 +78,17 @@ def start_workflow(
     repo_path: str | None = None,
     branch: str = "",
     status: str = "assigned",
+    source: str = "",
 ) -> dict:
     key = _normalize_issue_key(issue_key)
+    normalized_source = _workflow_source(source, key)
     now = _now(config)
     def mutate(state: dict) -> dict:
         workflows = _workflow_map(state)
         workflow = _ensure_workflow(workflows, key, summary=summary, now=now, hydrate=False)
         workflow["summary"] = summary.strip() or workflow.get("summary", "")
         workflow["project"] = _project_name(project, key, workflow)
+        workflow["source"] = normalized_source
         workflow["status"] = _advance_status(str(workflow.get("status") or "assigned"), status)
         workflow["updated_at"] = now
         if repo_path:
@@ -104,6 +108,7 @@ def record_branch_ready(config: AppConfig, issue_key: str, *, repo_path: str, br
         workflows = _workflow_map(state)
         workflow = _ensure_workflow(workflows, key, summary=summary, now=now, hydrate=False)
         workflow["summary"] = summary.strip() or workflow.get("summary", "")
+        workflow["source"] = _workflow_source(str(workflow.get("source") or ""), key)
         workflow["status"] = _advance_status(str(workflow.get("status") or "assigned"), "branch_ready")
         workflow["updated_at"] = now
         _upsert_repository(workflow, repo_path, branch=branch, branch_started_at=now)
@@ -210,6 +215,7 @@ def record_analysis_request(
         workflows = _workflow_map(state)
         workflow = _ensure_workflow(workflows, key, summary=summary, now=now, hydrate=False)
         workflow["summary"] = summary.strip() or workflow.get("summary", "")
+        workflow["source"] = _workflow_source(str(workflow.get("source") or ""), key)
         workflow["status"] = _advance_status(str(workflow.get("status") or "assigned"), "assigned")
         analysis = {
             "prompt_path": str(Path(prompt_path).expanduser()),
@@ -1145,6 +1151,7 @@ def _ensure_workflow(workflows: dict[str, dict], key: str, *, summary: str, now:
             "issue_key": key,
             "summary": summary.strip(),
             "project": _project_name("", key, {}),
+            "source": _workflow_source("", key),
             "status": "assigned",
             "created_at": now,
             "updated_at": now,
@@ -1159,7 +1166,19 @@ def _ensure_workflow(workflows: dict[str, dict], key: str, *, summary: str, now:
     if hydrate:
         _hydrate_linked_repositories(key, workflow)
     workflow["project"] = _project_name("", key, workflow)
+    workflow["source"] = _workflow_source(str(workflow.get("source") or ""), key)
     return workflow
+
+
+def _workflow_source(value: str, key: str) -> str:
+    source = value.strip().lower()
+    if source in {"jira", "manual"}:
+        return source
+    return "jira" if _is_jira_issue_key(key) else "manual"
+
+
+def _is_jira_issue_key(key: str) -> bool:
+    return re.fullmatch(r"[A-Z][A-Z0-9]+-\d+", key.strip().upper()) is not None
 
 
 def _project_name(project: str, key: str, workflow: dict) -> str:

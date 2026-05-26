@@ -91,6 +91,7 @@ def build_parser() -> argparse.ArgumentParser:
     issue_start.add_argument("--project", default="", help="일감을 묶을 프로젝트 이름")
     issue_start.add_argument("--repo", default="", help="연결 repository 경로")
     issue_start.add_argument("--branch", default="", help="이미 준비된 작업 브랜치")
+    issue_start.add_argument("--source", choices=["manual", "jira"], default="manual", help="일감 출처")
     issue_analyze = issue_sub.add_parser("analyze", help="Jira 일감을 Codex 1차 분석 요청서로 정리")
     issue_analyze.add_argument("issue_key", help="Jira 이슈 키")
     issue_analyze.add_argument("--format", choices=["text", "json"], default="text", help="출력 형식")
@@ -442,7 +443,7 @@ def main(argv: list[str] | None = None) -> int:
     config = load_config(config_path)
 
     if args.area == "issue" and args.command == "start":
-        start_workflow(config, args.issue_key, summary=args.summary, project=args.project, repo_path=args.repo or None, branch=args.branch)
+        start_workflow(config, args.issue_key, summary=args.summary, project=args.project, repo_path=args.repo or None, branch=args.branch, source=args.source)
         print(format_workflow(config, args.issue_key))
         return 0
 

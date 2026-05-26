@@ -265,7 +265,7 @@ def start_issue_work(
     summary = summary or _safe_issue_summary(config, issue_key)
     repo = _resolve_issue_repo(config, issue_key, repo_path=repo_path, summary=summary)
     link_issue_repository(config, issue_key, str(repo), summary=summary)
-    start_workflow(config, issue_key, summary=summary, repo_path=str(repo))
+    start_workflow(config, issue_key, summary=summary, repo_path=str(repo), source="jira")
     branch_result = create_branch(config, str(repo), issue_key, summary, prefix=prefix, base_branch=base_branch)
     record_branch_ready(config, issue_key, repo_path=str(repo), branch=branch_name(issue_key, summary, prefix=prefix), summary=summary)
     return "\n".join(

@@ -161,6 +161,10 @@ struct WorkView: View {
         runner.loadSettings().jiraIntegrationEnabled
     }
 
+    private var isJiraIntegrationReady: Bool {
+        runner.loadSettings().isReadyForBasicTests
+    }
+
     private var recentBriefingMemories: [String] {
         briefingMemoryLog
             .split(separator: "\n")
@@ -631,7 +635,8 @@ struct WorkView: View {
             } content: {
                 HStack(spacing: 10) {
                     briefingMetric(title: "전체 일감", value: "\(issueWorkflows.count)", systemImage: "checklist", tint: .blue, isAttention: false)
-                    briefingMetric(title: "프로젝트", value: "\(issueProjectNames.count)", systemImage: "folder", tint: .purple, isAttention: issueProjectNames.count > 1)
+                    briefingMetric(title: "Jira", value: "\(jiraWorkflowCount)", systemImage: "link.badge.plus", tint: .indigo, isAttention: jiraWorkflowNeedsAttentionCount > 0)
+                    briefingMetric(title: "수동", value: "\(manualWorkflowCount)", systemImage: "square.and.pencil", tint: .purple, isAttention: false)
                     briefingMetric(title: "승인 대기", value: "\(approvalWaitingCount)", systemImage: "hand.tap", tint: .orange, isAttention: approvalWaitingCount > 0)
                     briefingMetric(title: "진행 중", value: "\(activeWorkflowCount)", systemImage: "arrow.triangle.branch", tint: .green, isAttention: activeWorkflowCount > 0)
                 }
@@ -692,11 +697,35 @@ struct WorkView: View {
 
                 Divider()
 
-                ForEach(filteredIssueWorkflows) { item in
-                    issueWorkflowListRow(item)
+                let jiraItems = filteredIssueWorkflows.filter(\.isJiraSource)
+                let manualItems = filteredIssueWorkflows.filter(\.isManualSource)
+                if !jiraItems.isEmpty {
+                    issueWorkflowSourceHeader(title: "Jira 흐름", count: jiraItems.count, systemImage: "link", tint: .indigo)
+                    ForEach(jiraItems) { item in
+                        issueWorkflowListRow(item)
+                    }
+                }
+                if !manualItems.isEmpty {
+                    issueWorkflowSourceHeader(title: "수동 등록", count: manualItems.count, systemImage: "square.and.pencil", tint: .purple)
+                    ForEach(manualItems) { item in
+                        issueWorkflowListRow(item)
+                    }
                 }
             }
         }
+    }
+
+    private func issueWorkflowSourceHeader(title: String, count: Int, systemImage: String, tint: Color) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(tint)
+            Text(title)
+                .font(.caption.weight(.semibold))
+            flowTag("\(count)", tint: tint)
+            Spacer()
+        }
+        .padding(.top, 2)
     }
 
     private func issueProjectFilterChip(_ project: String, count: Int) -> some View {
@@ -760,6 +789,66 @@ struct WorkView: View {
         issueWorkflows.filter { !["done", "reported", "merged"].contains($0.status) }.count
     }
 
+    private var jiraWorkflowCount: Int {
+        issueWorkflows.filter(\.isJiraSource).count
+    }
+
+    private var manualWorkflowCount: Int {
+        issueWorkflows.filter(\.isManualSource).count
+    }
+
+    private var jiraWorkflowNeedsAttentionCount: Int {
+        issueWorkflows.filter { issueJiraWarning($0) != nil }.count
+    }
+
+    private func issueSourceLabel(_ workflow: IssueWorkflowRecord) -> String {
+        workflow.isJiraSource ? "Jira" : "수동"
+    }
+
+    private func issueSourceTint(_ workflow: IssueWorkflowRecord) -> Color {
+        workflow.isJiraSource ? .indigo : .purple
+    }
+
+    private func issueJiraWarning(_ workflow: IssueWorkflowRecord) -> String? {
+        guard workflow.isJiraSource else {
+            return nil
+        }
+        if !workflow.hasJiraKey {
+            return "Jira 흐름 일감이지만 Jira 키 형식이 아닙니다. Jira 상세 조회, 새 일감 감시, 담당자/상태 동기화 같은 Jira 전용 작업은 수행할 수 없습니다."
+        }
+        if !isJiraIntegrationEnabled {
+            return "Jira 연동이 꺼져 있습니다. 이 일감은 로컬 workflow로 계속 처리할 수 있지만 Jira 상세 조회, 감시, 상태 동기화 같은 Jira 전용 작업은 사용할 수 없습니다."
+        }
+        if !isJiraIntegrationReady {
+            return "Jira 연동 설정이 완전하지 않습니다. URL, 이메일, API Token, 기본 프로젝트를 확인해야 Jira 전용 작업을 수행할 수 있습니다."
+        }
+        return nil
+    }
+
+    private func issueJiraWarningPanel(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(Color.orange)
+                .frame(width: 18)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Jira 전용 작업 제한")
+                    .font(.caption.weight(.semibold))
+                Text(message)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(9)
+        .background(Color.orange.opacity(0.09))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.orange.opacity(0.18), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
     private func issueProjectFilterRow(_ project: String, count: Int) -> some View {
         Button {
             selectIssueProject(project)
@@ -803,9 +892,16 @@ struct WorkView: View {
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
+                    flowTag(issueSourceLabel(item), tint: issueSourceTint(item))
                     flowTag(displayIssueKey(item.issueKey), tint: .blue)
                     flowTag(issueProjectName(item), tint: .purple)
                     Spacer()
+                    if issueJiraWarning(item) != nil {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.caption)
+                            .foregroundStyle(Color.orange)
+                            .help(issueJiraWarning(item) ?? "")
+                    }
                     flowTag(workflowStatusLabel(item.status), tint: workflowStatusTint(item.status))
                 }
                 Text(item.summary.isEmpty ? "-" : privacyText(item.summary, fallback: "샘플 일감 제목"))
@@ -847,12 +943,23 @@ struct WorkView: View {
         } content: {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        flowTag(issueSourceLabel(workflow), tint: issueSourceTint(workflow))
+                        if let warning = issueJiraWarning(workflow) {
+                            flowTag("Jira 확인 필요", tint: .orange)
+                                .help(warning)
+                        }
+                    }
                     Text(workflow.summary.isEmpty ? "-" : privacyText(workflow.summary, fallback: "샘플 일감 제목"))
                         .font(.title3.weight(.semibold))
                         .lineLimit(2)
                     Text(nextWorkflowAction(workflow))
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+
+                if let warning = issueJiraWarning(workflow) {
+                    issueJiraWarningPanel(warning)
                 }
 
                 issueCurrentStepPanel(workflow)

@@ -910,6 +910,7 @@ final class DevPilotRunner: NSObject, ObservableObject, NSWindowDelegate {
             IssueWorkflowRecord(
                 issueKey: value.issueKey.isEmpty ? key : value.issueKey,
                 project: value.project,
+                source: value.source,
                 summary: value.summary,
                 status: value.status,
                 updatedAt: value.updatedAt,

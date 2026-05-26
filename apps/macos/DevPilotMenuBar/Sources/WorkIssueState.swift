@@ -121,6 +121,7 @@ struct IssueWorkStateBadge: View {
 struct IssueWorkflowRecord: Identifiable, Decodable, Hashable {
     let issueKey: String
     let project: String
+    let source: String
     let summary: String
     let status: String
     let updatedAt: String
@@ -136,6 +137,7 @@ struct IssueWorkflowRecord: Identifiable, Decodable, Hashable {
     enum CodingKeys: String, CodingKey {
         case issueKey = "issue_key"
         case project
+        case source
         case summary
         case status
         case updatedAt = "updated_at"
@@ -150,6 +152,7 @@ struct IssueWorkflowRecord: Identifiable, Decodable, Hashable {
     init(
         issueKey: String,
         project: String,
+        source: String,
         summary: String,
         status: String,
         updatedAt: String,
@@ -162,6 +165,8 @@ struct IssueWorkflowRecord: Identifiable, Decodable, Hashable {
     ) {
         self.issueKey = issueKey
         self.project = project
+        let normalizedSource = source.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        self.source = normalizedSource.isEmpty ? IssueWorkflowRecord.inferredSource(issueKey: issueKey) : normalizedSource
         self.summary = summary
         self.status = status
         self.updatedAt = updatedAt
@@ -178,6 +183,7 @@ struct IssueWorkflowRecord: Identifiable, Decodable, Hashable {
         self.init(
             issueKey: try container.decodeIfPresent(String.self, forKey: .issueKey) ?? "",
             project: try container.decodeIfPresent(String.self, forKey: .project) ?? "",
+            source: try container.decodeIfPresent(String.self, forKey: .source) ?? "",
             summary: try container.decodeIfPresent(String.self, forKey: .summary) ?? "",
             status: try container.decodeIfPresent(String.self, forKey: .status) ?? "assigned",
             updatedAt: try container.decodeIfPresent(String.self, forKey: .updatedAt) ?? "",
@@ -188,6 +194,22 @@ struct IssueWorkflowRecord: Identifiable, Decodable, Hashable {
             nextActions: try container.decodeIfPresent([String].self, forKey: .nextActions) ?? [],
             blockers: try container.decodeIfPresent([String].self, forKey: .blockers) ?? []
         )
+    }
+
+    var isJiraSource: Bool {
+        source == "jira"
+    }
+
+    var isManualSource: Bool {
+        source == "manual"
+    }
+
+    var hasJiraKey: Bool {
+        issueKey.range(of: #"^[A-Z][A-Z0-9]+-\d+$"#, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    static func inferredSource(issueKey: String) -> String {
+        issueKey.range(of: #"^[A-Z][A-Z0-9]+-\d+$"#, options: [.regularExpression, .caseInsensitive]) != nil ? "jira" : "manual"
     }
 }
 
