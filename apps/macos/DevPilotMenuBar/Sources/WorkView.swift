@@ -934,57 +934,34 @@ struct WorkView: View {
         let record = issueProjects.first { $0.name == project }
         let workflows = issueWorkflows.filter { issueProjectName($0) == project }
         let activeCount = workflows.filter { !["done", "reported", "merged"].contains($0.status) }.count
+        let approvalCount = workflows.filter(workflowNeedsApproval).count
+        let testCount = workflows.filter(workflowNeedsTest).count
+        let reportCount = workflows.filter(workflowNeedsReport).count
         let isJiraManaged = record?.isJiraManaged == true
 
-        return VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: isJiraManaged ? "link.badge.plus" : "tray")
-                    .foregroundStyle(isJiraManaged ? Color.indigo : Color.purple)
-                    .frame(width: 18)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(project)
-                        .font(.caption.weight(.semibold))
-                        .lineLimit(1)
-                    Text(projectManagementDescription(record))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                Spacer()
-                flowTag("\(workflows.count)", tint: activeCount > 0 ? .green : .secondary)
+        return IssueProjectAssignmentCardView(
+            project: project,
+            managementDescription: projectManagementDescription(record),
+            isJiraManaged: isJiraManaged,
+            totalCount: workflows.count,
+            activeCount: activeCount,
+            approvalCount: approvalCount,
+            testCount: testCount,
+            reportCount: reportCount,
+            isSelected: selectedIssueProject == project,
+            isJiraIntegrationEnabled: isJiraIntegrationEnabled,
+            isRunning: runner.isRunning,
+            onSelect: {
+                selectIssueProject(project)
+            },
+            onManualIssue: {
+                prepareManualIssueProject(project)
+                isManualIssueCreatePresented = true
+            },
+            onImportJira: {
+                Task { await importJiraIssues(project: project) }
             }
-
-            HStack(spacing: 7) {
-                Button {
-                    prepareManualIssueProject(project)
-                    isManualIssueCreatePresented = true
-                } label: {
-                    Label("일감 등록", systemImage: "plus.app")
-                }
-                .disabled(runner.isRunning)
-
-                if isJiraManaged {
-                    Button {
-                        Task { await importJiraIssues(project: project) }
-                    } label: {
-                        Label("Jira 가져오기", systemImage: "tray.and.arrow.down")
-                    }
-                    .disabled(runner.isRunning || !isJiraIntegrationEnabled)
-                    .help(isJiraIntegrationEnabled ? "Jira 프로젝트 일감을 가져옵니다." : "Jira 연동이 꺼져 있습니다.")
-                }
-            }
-            .font(.caption)
-        }
-        .padding(10)
-        .background(selectedIssueProject == project ? Color.accentColor.opacity(0.14) : Color(nsColor: .controlBackgroundColor).opacity(0.46))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(selectedIssueProject == project ? Color.accentColor.opacity(0.34) : Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
         )
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .onTapGesture {
-            selectIssueProject(project)
-        }
     }
 
     private func issueWorkflowSourceHeader(title: String, count: Int, systemImage: String, tint: Color) -> some View {
@@ -1081,7 +1058,7 @@ struct WorkView: View {
     }
 
     private var approvalWaitingCount: Int {
-        issueWorkflows.filter { workflowStageState($0, stage: .analysis).label == "승인 대기" || workflowStageState($0, stage: .repo).label == "승인 대기" || workflowStageState($0, stage: .workspace).label == "승인 대기" }.count
+        issueWorkflows.filter(workflowNeedsApproval).count
     }
 
     private var activeWorkflowCount: Int {
@@ -1100,6 +1077,20 @@ struct WorkView: View {
         issueWorkflows.filter { issueJiraWarning($0) != nil }.count
     }
 
+    private func workflowNeedsApproval(_ workflow: IssueWorkflowRecord) -> Bool {
+        workflowStageState(workflow, stage: .analysis).label == "승인 대기"
+            || workflowStageState(workflow, stage: .repo).label == "승인 대기"
+            || workflowStageState(workflow, stage: .workspace).label == "승인 대기"
+    }
+
+    private func workflowNeedsTest(_ workflow: IssueWorkflowRecord) -> Bool {
+        workflow.tests.isEmpty && ["implemented", "tested"].contains(workflow.status)
+    }
+
+    private func workflowNeedsReport(_ workflow: IssueWorkflowRecord) -> Bool {
+        workflow.reports.isEmpty && !workflow.tests.isEmpty
+    }
+
     private func issueSourceLabel(_ workflow: IssueWorkflowRecord) -> String {
         workflow.isJiraSource ? "Jira" : "수동"
     }
@@ -1113,15 +1104,20 @@ struct WorkView: View {
             return nil
         }
         if !workflow.hasJiraKey {
-            return "Jira 흐름 일감이지만 Jira 키 형식이 아닙니다. Jira 상세 조회, 새 일감 감시, 담당자/상태 동기화 같은 Jira 전용 작업은 수행할 수 없습니다."
+            return "Jira 키 형식이 아니어서 Jira 상세 조회와 상태 동기화를 사용할 수 없습니다."
         }
         if !isJiraIntegrationEnabled {
-            return "Jira 연동이 꺼져 있습니다. 이 일감은 로컬 workflow로 계속 처리할 수 있지만 Jira 상세 조회, 감시, 상태 동기화 같은 Jira 전용 작업은 사용할 수 없습니다."
+            return "Jira 연동 꺼짐: 로컬 workflow로 계속 처리합니다."
         }
         if !isJiraIntegrationReady {
-            return "Jira 연동 설정이 완전하지 않습니다. URL, 이메일, API Token, 기본 프로젝트를 확인해야 Jira 전용 작업을 수행할 수 있습니다."
+            return "Jira 설정을 확인해야 Jira 전용 작업을 사용할 수 있습니다."
         }
         return nil
+    }
+
+    private func shouldShowJiraWarningPanel(_ workflow: IssueWorkflowRecord) -> Bool {
+        guard workflow.isJiraSource else { return false }
+        return !workflow.hasJiraKey || isJiraIntegrationEnabled
     }
 
     private func issueJiraWarningPanel(_ message: String) -> some View {
@@ -1130,7 +1126,7 @@ struct WorkView: View {
                 .foregroundStyle(Color.orange)
                 .frame(width: 18)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Jira 전용 작업 제한")
+                Text("Jira 연결 확인")
                     .font(.caption.weight(.semibold))
                 Text(message)
                     .font(.caption2)
@@ -1288,7 +1284,7 @@ struct WorkView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                if let warning = issueJiraWarning(workflow) {
+                if let warning = issueJiraWarning(workflow), shouldShowJiraWarningPanel(workflow) {
                     issueJiraWarningPanel(warning)
                 }
 
@@ -1472,7 +1468,7 @@ struct WorkView: View {
                     spacing: 10
                 ) {
                     ForEach(director.sections) { section in
-                        issueDirectorSectionCard(section)
+                        issueDirectorSectionCard(section, workflow: workflow)
                     }
                 }
 
@@ -1506,7 +1502,7 @@ struct WorkView: View {
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
-    private func issueDirectorSectionCard(_ section: IssueDirectorSectionRecord) -> some View {
+    private func issueDirectorSectionCard(_ section: IssueDirectorSectionRecord, workflow: IssueWorkflowRecord) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: issueDirectorSectionImage(section.id))
@@ -1534,10 +1530,86 @@ struct WorkView: View {
                         .lineLimit(2)
                 }
             }
+
+            if let action = issueDirectorSectionAction(section.id, workflow: workflow) {
+                Button {
+                    action.run()
+                } label: {
+                    Label(action.title, systemImage: action.systemImage)
+                        .font(.caption2.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(action.isDisabled)
+            }
         }
         .padding(9)
         .background(Color(nsColor: .textBackgroundColor).opacity(0.58))
         .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func issueDirectorSectionAction(_ id: String, workflow: IssueWorkflowRecord) -> (title: String, systemImage: String, isDisabled: Bool, run: () -> Void)? {
+        switch id {
+        case "analysis":
+            return (
+                workflow.analysis == nil ? "분석 승인" : "다시 분석",
+                "sparkles",
+                runner.isRunning,
+                { Task { await analyzeWorkflowIssue(workflow) } }
+            )
+        case "repositories":
+            return (
+                workflow.repositories.isEmpty ? "repository 확정" : "repository 조정",
+                "folder.badge.plus",
+                false,
+                { runner.openIssueRepositoryLinkWindow(issue: workflow.issueKey, summary: workflow.summary) }
+            )
+        case "branch":
+            return (
+                "workspace 준비",
+                "folder.badge.gearshape",
+                runner.isRunning || workflow.repositories.isEmpty || workflow.repositories.contains(where: \.isWorkspaceRepo),
+                { Task { await prepareWorkflowWorkspace(workflow) } }
+            )
+        case "tests":
+            return (
+                workflow.tests.isEmpty ? "스모크 기록" : "테스트 확인",
+                workflow.tests.isEmpty ? "checkmark.seal" : "checklist.checked",
+                runner.isRunning,
+                {
+                    Task {
+                        if workflow.tests.isEmpty {
+                            await recordWorkflowSmokeTest(workflow)
+                        } else {
+                            await runDashboardCommand(
+                                ["issue", "show", workflow.issueKey],
+                                title: "\(workflow.issueKey) 테스트 상태",
+                                running: "테스트 기록을 불러오는 중...",
+                                success: "테스트 기록 조회 완료",
+                                failure: "테스트 기록 조회 실패"
+                            )
+                        }
+                    }
+                }
+            )
+        case "report":
+            return (
+                workflow.reports.isEmpty ? "보고 등록" : "보고 확인",
+                "doc.badge.plus",
+                runner.isRunning,
+                { Task { await recordWorkflowReport(workflow) } }
+            )
+        case "plan", "trace":
+            return (
+                "Codex 작업 열기",
+                "sparkles.rectangle.stack",
+                runner.isRunning || workflow.repositories.isEmpty,
+                { Task { await openCodexForWorkflow(workflow) } }
+            )
+        default:
+            return nil
+        }
     }
 
     private func issueDirectorSectionImage(_ id: String) -> String {
@@ -1683,26 +1755,26 @@ struct WorkView: View {
                     )
                 }
             } label: {
-                Label("상세 보기", systemImage: "doc.text.magnifyingglass")
+                Label("수신 상세 확인", systemImage: "doc.text.magnifyingglass")
             }
         case .analysis:
             Button {
                 Task { await analyzeWorkflowIssue(workflow) }
             } label: {
-                Label(workflow.analysis == nil ? "AI 분석 승인" : "AI 분석 다시 요청", systemImage: "sparkles")
+                Label(workflow.analysis == nil ? "AI 분석 실행" : "AI 분석 재실행", systemImage: "sparkles")
             }
             .disabled(runner.isRunning)
         case .repo:
             Button {
                 runner.openIssueRepositoryLinkWindow(issue: workflow.issueKey, summary: workflow.summary)
             } label: {
-                Label("repository 확정", systemImage: "folder.badge.plus")
+                Label("repository 선택", systemImage: "folder.badge.plus")
             }
         case .workspace:
             Button {
                 Task { await prepareWorkflowWorkspace(workflow) }
             } label: {
-                Label("workspace 생성 승인", systemImage: "folder.badge.gearshape")
+                Label("workspace 생성", systemImage: "folder.badge.gearshape")
             }
             .disabled(runner.isRunning || workflow.repositories.isEmpty || workflow.repositories.contains(where: \.isWorkspaceRepo))
         case .implementation:
@@ -1717,7 +1789,7 @@ struct WorkView: View {
                 Button {
                     Task { await markWorkflowImplemented(workflow) }
                 } label: {
-                    Label("구현 완료 표시", systemImage: "checkmark.seal")
+                    Label("구현 완료", systemImage: "checkmark.seal")
                 }
                 .disabled(runner.isRunning)
             }
@@ -1726,7 +1798,7 @@ struct WorkView: View {
                 Button {
                     Task { await recordWorkflowSmokeTest(workflow) }
                 } label: {
-                    Label("스모크 통과 기록", systemImage: "checkmark.seal")
+                    Label("테스트 통과 기록", systemImage: "checkmark.seal")
                 }
                 .disabled(runner.isRunning)
             } else {
@@ -1748,7 +1820,7 @@ struct WorkView: View {
             Button {
                 Task { await recordWorkflowReport(workflow) }
             } label: {
-                Label(workflow.reports.isEmpty ? "보고 등록" : "보고 확인", systemImage: "doc.badge.plus")
+                Label(workflow.reports.isEmpty ? "보고 등록" : "보고 보기", systemImage: "doc.badge.plus")
             }
             .disabled(runner.isRunning)
         }

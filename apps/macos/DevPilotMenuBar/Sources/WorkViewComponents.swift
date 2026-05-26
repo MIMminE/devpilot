@@ -394,6 +394,106 @@ struct DashboardButton: View {
     }
 }
 
+struct IssueProjectAssignmentCardView: View {
+    let project: String
+    let managementDescription: String
+    let isJiraManaged: Bool
+    let totalCount: Int
+    let activeCount: Int
+    let approvalCount: Int
+    let testCount: Int
+    let reportCount: Int
+    let isSelected: Bool
+    let isJiraIntegrationEnabled: Bool
+    let isRunning: Bool
+    let onSelect: () -> Void
+    let onManualIssue: () -> Void
+    let onImportJira: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(spacing: 8) {
+                Image(systemName: isJiraManaged ? "link.badge.plus" : "tray")
+                    .foregroundStyle(isJiraManaged ? Color.indigo : Color.purple)
+                    .frame(width: 18)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(project)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                    Text(managementDescription)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+                projectCountPill("\(totalCount)", tint: activeCount > 0 ? .green : .secondary)
+            }
+
+            HStack(spacing: 6) {
+                projectSignalPill(title: "승인", count: approvalCount, tint: .orange, systemImage: "hand.tap")
+                projectSignalPill(title: "테스트", count: testCount, tint: .blue, systemImage: "checkmark.seal")
+                projectSignalPill(title: "보고", count: reportCount, tint: .indigo, systemImage: "doc.badge.plus")
+            }
+
+            HStack(spacing: 7) {
+                Button(action: onManualIssue) {
+                    Label("일감 등록", systemImage: "plus.app")
+                }
+                .disabled(isRunning)
+
+                if isJiraManaged {
+                    Button(action: onImportJira) {
+                        Label("Jira 가져오기", systemImage: "tray.and.arrow.down")
+                    }
+                    .disabled(isRunning || !isJiraIntegrationEnabled)
+                    .help(isJiraIntegrationEnabled ? "Jira 프로젝트 일감을 가져옵니다." : "Jira 연동이 꺼져 있습니다.")
+                }
+            }
+            .font(.caption)
+        }
+        .padding(10)
+        .background(isSelected ? Color.accentColor.opacity(0.14) : Color(nsColor: .controlBackgroundColor).opacity(0.46))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(isSelected ? Color.accentColor.opacity(0.34) : Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .contentShape(RoundedRectangle(cornerRadius: 8))
+        .onTapGesture(perform: onSelect)
+    }
+
+    private func projectSignalPill(title: String, count: Int, tint: Color, systemImage: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: systemImage)
+                .font(.caption2.weight(.semibold))
+            Text(title)
+                .font(.caption2.weight(.semibold))
+            Text("\(count)")
+                .font(.caption2.weight(.bold))
+                .monospacedDigit()
+        }
+        .foregroundStyle(count > 0 ? tint : Color.secondary)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity)
+        .background((count > 0 ? tint : Color.secondary).opacity(count > 0 ? 0.12 : 0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func projectCountPill(_ text: String, tint: Color) -> some View {
+        Text(text)
+            .font(.caption2.weight(.bold))
+            .monospacedDigit()
+            .foregroundStyle(tint)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(tint.opacity(0.11))
+            .clipShape(Capsule())
+    }
+}
+
 struct CommandGroup<Content: View>: View {
     let title: String
     let subtitle: String
@@ -1590,6 +1690,9 @@ struct WorkNoticeDiagnosticView: View {
         if message.localizedCaseInsensitiveContains("rebase") || message.contains("리베이스") {
             return "rebase 상태 확인이 필요합니다"
         }
+        if message.localizedCaseInsensitiveContains("cleanup") || message.localizedCaseInsensitiveContains("worktree") || message.contains("정리") {
+            return "workspace 정리 상태를 확인해야 합니다"
+        }
         if message.contains("Codex CLI") || message.contains("codex") {
             return "Codex 실행 상태를 확인해야 합니다"
         }
@@ -1618,14 +1721,17 @@ struct WorkNoticeDiagnosticView: View {
         if message.localizedCaseInsensitiveContains("conflict") || message.contains("충돌") || message.contains("CONFLICT") {
             return "자동 처리 중 충돌이 난 상태입니다. 충돌 파일을 확인한 뒤 수동으로 정리하고 다시 실행하세요."
         }
+        if message.localizedCaseInsensitiveContains("cleanup") || message.localizedCaseInsensitiveContains("worktree") || message.contains("정리") {
+            return "workspace 정리는 worktree 안에 변경 파일이 없을 때만 진행하는 것이 안전합니다. 남은 변경분을 커밋하거나 stash한 뒤 다시 시도하세요."
+        }
         if message.localizedCaseInsensitiveContains("rebase") || message.contains("리베이스") {
-            return "현재 브랜치와 기준 브랜치의 차이를 확인하세요. 자동 rebase가 실패했다면 충돌 또는 로컬 변경분이 있는지 먼저 보는 게 좋습니다."
+            return "현재 브랜치와 기준 브랜치의 차이를 확인하세요. 자동 rebase가 실패했다면 충돌 파일을 정리한 뒤 git rebase --continue를 진행하거나, 판단이 어려우면 rebase를 중단하고 다시 최신화하세요."
         }
         if message.contains("Codex CLI") || message.contains("codex") {
             return "Codex CLI 설치/로그인 상태를 확인해 주세요. 대시보드 상단의 Codex 상태 칩으로 다시 점검할 수 있습니다."
         }
         if message.contains("dirty") || message.contains("미커밋") || message.contains("commit 또는 stash") {
-            return "작업 전 변경분을 커밋하거나 stash 해야 합니다. 변경 파일이 의도한 것인지 먼저 확인하세요."
+            return "작업 전 변경분을 커밋하거나 stash 해야 합니다. 변경 파일이 의도한 것인지 확인하고, 일감과 무관한 변경은 별도 커밋이나 stash로 분리하세요."
         }
         if message.contains("Slack") || message.contains("chat.postMessage") {
             return "Slack Bot Token과 전송 채널 권한을 확인해 주세요. 앱 기록은 남기고 Slack 전송만 다시 시도할 수 있습니다."
