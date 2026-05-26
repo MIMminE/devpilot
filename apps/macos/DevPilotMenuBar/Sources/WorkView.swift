@@ -2,6 +2,13 @@ import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
 
+private struct RecordCalendarMarker: Hashable {
+    let kind: String
+    let label: String
+    let count: Int
+    let color: Color
+}
+
 struct WorkView: View {
     @ObservedObject var runner: DevPilotRunner
     private static let jiraKeyRegex = try? NSRegularExpression(pattern: #"[A-Z][A-Z0-9]+-\d+"#)
@@ -3226,6 +3233,7 @@ struct WorkView: View {
                 }
                 ForEach(currentMonthCalendarDays, id: \.self) { day in
                     let reports = reports(on: day)
+                    let markers = recordMarkers(on: day)
                     Button {
                         if let date = currentMonthDate(day: day) {
                             selectedRecordDate = date
@@ -3237,15 +3245,15 @@ struct WorkView: View {
                         VStack(spacing: 4) {
                             Text(day == 0 ? "" : "\(day)")
                                 .font(.caption.weight(.semibold))
-                            if !reports.isEmpty {
-                                Circle()
-                                    .fill(Color.accentColor)
-                                    .frame(width: 5, height: 5)
-                            } else {
-                                Circle()
-                                    .fill(Color.clear)
-                                    .frame(width: 5, height: 5)
+                            HStack(spacing: 2) {
+                                ForEach(markers.prefix(4), id: \.kind) { marker in
+                                    Circle()
+                                        .fill(marker.color)
+                                        .frame(width: 5, height: 5)
+                                }
                             }
+                            .frame(height: 5)
+                            .frame(maxWidth: .infinity)
                         }
                         .frame(height: 38)
                         .frame(maxWidth: .infinity)
@@ -3254,7 +3262,7 @@ struct WorkView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(day == 0)
-                    .help(calendarDayHelp(day: day, reports: reports))
+                    .help(calendarDayHelp(day: day, markers: markers))
                 }
             }
 
@@ -4459,6 +4467,33 @@ struct WorkView: View {
         return submittedReports.filter { $0.date == date }
     }
 
+    private func recordMarkers(on day: Int) -> [RecordCalendarMarker] {
+        guard let date = currentMonthDate(day: day) else {
+            return []
+        }
+        let dateText = formatDate(date)
+        var markers: [RecordCalendarMarker] = []
+        let reportCount = submittedReports.filter { $0.date == dateText }.count
+        if reportCount > 0 {
+            markers.append(RecordCalendarMarker(kind: "report", label: "보고서", count: reportCount, color: .blue))
+        }
+        let memoCount = workMemos.filter { $0.date.hasPrefix(dateText) || $0.createdAt.hasPrefix(dateText) }.count
+        if memoCount > 0 {
+            markers.append(RecordCalendarMarker(kind: "memo", label: "메모", count: memoCount, color: .purple))
+        }
+        let jiraCount = jiraTeamFlowItems.filter { item in
+            item.created.hasPrefix(dateText) || item.updated.hasPrefix(dateText) || item.due.hasPrefix(dateText)
+        }.count
+        if jiraCount > 0 {
+            markers.append(RecordCalendarMarker(kind: "jira", label: "Jira", count: jiraCount, color: .orange))
+        }
+        let overtimeCount = overtimeSummary.records.filter { $0.date == dateText }.count
+        if overtimeCount > 0 {
+            markers.append(RecordCalendarMarker(kind: "overtime", label: "연장", count: overtimeCount, color: .green))
+        }
+        return markers
+    }
+
     private func currentMonthDate(day: Int) -> Date? {
         guard day > 0 else {
             return nil
@@ -4468,15 +4503,15 @@ struct WorkView: View {
         return calendar.date(from: DateComponents(year: components.year, month: components.month, day: day))
     }
 
-    private func calendarDayHelp(day: Int, reports: [SubmittedReportRecord]) -> String {
+    private func calendarDayHelp(day: Int, markers: [RecordCalendarMarker]) -> String {
         guard let date = currentMonthDate(day: day) else {
             return ""
         }
         let dateText = formatKoreanDate(date)
-        if reports.isEmpty {
+        if markers.isEmpty {
             return dateText
         }
-        return "\(dateText) · 보고서 \(reports.count)개"
+        return "\(dateText) · \(markers.map { "\($0.label) \($0.count)개" }.joined(separator: ", "))"
     }
 
     private func calendarDayBackground(day: Int, reports: [SubmittedReportRecord]) -> Color {
