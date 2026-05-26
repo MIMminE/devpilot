@@ -34,7 +34,7 @@ def morning_briefing(config: AppConfig, *, send_slack: bool, dry_run: bool = Fal
     sections = [
         "출근 브리핑",
         "",
-        "[오늘 Jira 일감]",
+        "[오늘 일감]",
         format_today_items(config, max_results=10, dry_run=dry_run, send_slack=False),
         "",
         "[이어갈 일감 워크플로우]",
@@ -75,8 +75,8 @@ def evening_check(config: AppConfig, *, send_slack: bool, dry_run: bool = False)
         "[오늘 작업 보고]",
         _safe_git_report(config, dry_run=dry_run),
         "",
-        "[Jira 키 누락 점검]",
-        audit_jira_keys(config),
+        "[일감 키 누락 점검]",
+        audit_issue_keys(config),
     ]
     message = "\n".join(sections)
     if send_slack and config.features.notifications and not dry_run:
@@ -120,10 +120,10 @@ def create_branch(
     suffix = f"\n{details}" if details else ""
     return "\n".join(
         [
-            f"{repo.name}: Jira 작업 브랜치 생성 완료",
+            f"{repo.name}: 일감 작업 브랜치 생성 완료",
             f"- 기준 브랜치: {base}",
             f"- 작업 브랜치: {name}",
-            f"- Jira 키: {issue_key.upper()}",
+            f"- 일감 키: {issue_key.upper()}",
         ]
     ) + suffix
 
@@ -210,12 +210,16 @@ def pr_draft(config: AppConfig, repo_path: str | None, issue_key: str | None) ->
         "",
         "## 확인 필요",
         "- 테스트/동작 확인",
-        "- Jira 일감 링크 확인",
+        "- 일감 링크 확인",
     ]
     return "\n".join(lines)
 
 
 def audit_jira_keys(config: AppConfig) -> str:
+    return audit_issue_keys(config)
+
+
+def audit_issue_keys(config: AppConfig) -> str:
     _ensure_dev_tools(config)
     rows: list[str] = []
     for repo in _repositories(config):
@@ -225,10 +229,10 @@ def audit_jira_keys(config: AppConfig) -> str:
         if missing_branch_key or missing_commit_keys:
             rows.append(f"- {repo.name} [{branch}]")
             if missing_branch_key:
-                rows.append("  - 브랜치명에 Jira 키 없음")
+                rows.append("  - 브랜치명에 일감 키 없음")
             for commit in missing_commit_keys[:3]:
-                rows.append(f"  - 커밋 Jira 키 없음: {commit}")
-    return "\n".join(rows) if rows else "Jira 키 누락 항목 없음"
+                rows.append(f"  - 커밋 일감 키 없음: {commit}")
+    return "\n".join(rows) if rows else "일감 키 누락 항목 없음"
 
 
 def dashboard(config: AppConfig) -> str:

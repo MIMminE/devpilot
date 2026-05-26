@@ -202,8 +202,8 @@ def require_jira_work_branch(repo: Path, *, action: str) -> None:
             "\n".join(
                 [
                     f"{action} 제한: `{branch}` 브랜치에는 직접 작업/푸시하지 않습니다.",
-                    "DevPilot 기본 정책은 Jira 일감 키가 포함된 작업 브랜치에서 개발한 뒤 PR과 merge로 반영하는 방식입니다.",
-                    "Jira 일감에서 `브랜치 시작`을 사용하거나 dev start-issue 명령으로 작업 브랜치를 만든 뒤 다시 실행해 주세요.",
+                    "DevPilot 기본 정책은 일감 키가 포함된 작업 브랜치에서 개발한 뒤 PR과 merge로 반영하는 방식입니다.",
+                    "일감 처리 흐름에서 `브랜치 시작`을 사용하거나 dev start-issue 명령으로 작업 브랜치를 만든 뒤 다시 실행해 주세요.",
                 ]
             )
         )
@@ -211,8 +211,8 @@ def require_jira_work_branch(repo: Path, *, action: str) -> None:
         raise RuntimeError(
             "\n".join(
                 [
-                    f"{action} 제한: 현재 브랜치 `{branch}`에 Jira 이슈 키가 없습니다.",
-                    "브랜치 이름에는 LMS-123 같은 Jira 키가 포함되어야 합니다.",
+                    f"{action} 제한: 현재 브랜치 `{branch}`에 일감 키가 없습니다.",
+                    "브랜치 이름에는 LMS-123 또는 LOCAL-20260526-153000 같은 일감 키가 포함되어야 합니다.",
                     "예: feature/LMS-123-summary",
                 ]
             )

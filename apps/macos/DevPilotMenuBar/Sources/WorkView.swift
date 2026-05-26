@@ -648,7 +648,7 @@ struct WorkView: View {
                     }
                 }
             } else if issueWorkflows.isEmpty {
-                EmptyDashboardState(systemImage: "checklist", title: "진행 중인 일감이 없습니다", message: "Jira 일감을 분석하거나 workspace를 만들면 이곳에서 단계별 진행 상태를 볼 수 있습니다.")
+                EmptyDashboardState(systemImage: "checklist", title: "진행 중인 일감이 없습니다", message: "수동 일감을 등록하거나 workspace를 만들면 이곳에서 단계별 진행 상태를 볼 수 있습니다.")
             } else {
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .top, spacing: 12) {
@@ -4681,7 +4681,7 @@ struct WorkView: View {
             return "AI 분석 결과를 보고 변경할 repository를 확정해야 합니다. 현재 연결된 repository가 없습니다."
         }
         if !workflow.repositories.contains(where: \.isWorkspaceRepo) {
-            return "아래 repository들로 Jira 키가 포함된 작업 브랜치와 worktree workspace를 생성할 수 있습니다."
+            return "아래 repository들로 일감 키가 포함된 작업 브랜치와 worktree workspace를 생성할 수 있습니다."
         }
         return "workspace가 준비되었습니다. Codex와 구현을 진행하고 단계별로 테스트/보고를 승인하세요."
     }
@@ -4730,7 +4730,7 @@ struct WorkView: View {
             if workflow.repositories.isEmpty {
                 return "repository 확정 이후 workspace를 만들 수 있습니다."
             }
-            return "Jira 키가 포함된 브랜치와 worktree 생성을 승인할 수 있습니다."
+            return "일감 키가 포함된 브랜치와 worktree 생성을 승인할 수 있습니다."
         case .implementation:
             if ["implemented", "tested", "reported", "done", "merged"].contains(workflow.status) {
                 return "구현 완료로 표시되었습니다."
@@ -5099,7 +5099,7 @@ private enum IssueFlowStage: CaseIterable {
 
     var subtitle: String {
         switch self {
-        case .intake: return "Jira 일감이 워크플로우에 등록됨"
+        case .intake: return "일감이 워크플로우에 등록됨"
         case .analysis: return "유형, As-Is/To-Be, 변경 후보 파악"
         case .repo: return "변경할 repository 승인"
         case .workspace: return "worktree와 작업 브랜치 생성"

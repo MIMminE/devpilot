@@ -912,7 +912,7 @@ struct RepositoryDashboardRow: View {
             return "기준 브랜치 rebase 필요"
         }
         if !repo.isJiraWorkBranch {
-            return repo.isWorkingBranch ? "Jira 키 브랜치 필요" : "기준 브랜치"
+            return repo.isWorkingBranch ? "일감 키 브랜치 필요" : "기준 브랜치"
         }
         if repo.dirtyCount > 0 {
             return "로컬 변경 정리"
@@ -934,7 +934,7 @@ struct RepositoryDashboardRow: View {
         let behind = repo.behind ?? 0
         let baseBehind = repo.baseBehind ?? 0
         if repo.isProtectedWorkflowBranch {
-            return "설정된 기준 브랜치가 아닌 보호 브랜치입니다. Jira 일감에서 작업 브랜치를 만든 뒤 PR로 반영하세요."
+            return "설정된 기준 브랜치가 아닌 보호 브랜치입니다. 일감 처리 흐름에서 작업 브랜치를 만든 뒤 PR로 반영하세요."
         }
         if !repo.autoSyncMessage.isEmpty {
             return repo.autoSyncMessage
@@ -947,8 +947,8 @@ struct RepositoryDashboardRow: View {
         }
         if !repo.isJiraWorkBranch {
             return repo.isWorkingBranch
-                ? "브랜치 이름에 LMS-123 같은 Jira 키가 필요합니다. Jira 일감 시작 흐름으로 브랜치를 생성하세요."
-                : "이 repository의 기준 브랜치입니다. 새 작업은 Jira 일감 시작 흐름으로 작업 브랜치를 생성하세요."
+                ? "브랜치 이름에 LMS-123 또는 LOCAL-20260526-153000 같은 일감 키가 필요합니다. 일감 시작 흐름으로 브랜치를 생성하세요."
+                : "이 repository의 기준 브랜치입니다. 새 작업은 일감 시작 흐름으로 작업 브랜치를 생성하세요."
         }
         if repo.dirtyCount > 0 && behind > 0 {
             return "1. 변경사항 commit/stash -> 2. Fetch -> 3. \(ahead > 0 ? "Rebase" : "Pull") -> 4. 테스트 후 Push"
@@ -1613,7 +1613,7 @@ struct WorkNoticeDiagnosticView: View {
             return "터미널에서 gh auth status를 확인하고, 필요하면 gh auth login을 다시 진행하세요. 조직 repository는 SSO 승인도 확인해야 합니다."
         }
         if DevPilotRunner.needsRepositorySelection(message) {
-            return "이 Jira 일감과 연결된 저장소가 없거나 여러 개입니다. repository 연결 창에서 작업할 저장소를 선택한 뒤 다시 시작하세요."
+            return "이 일감과 연결된 저장소가 없거나 여러 개입니다. repository 연결 창에서 작업할 저장소를 선택한 뒤 다시 시작하세요."
         }
         if message.localizedCaseInsensitiveContains("conflict") || message.contains("충돌") || message.contains("CONFLICT") {
             return "자동 처리 중 충돌이 난 상태입니다. 충돌 파일을 확인한 뒤 수동으로 정리하고 다시 실행하세요."

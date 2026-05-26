@@ -12,6 +12,7 @@ from devpilot.config import AppConfig
 
 def token_status(config: AppConfig, *, output_format: str = "text") -> str:
     metadata = _token_metadata()
+    openai_required = config.features.ai and config.openai.provider in {"openai", "openai-api"}
     rows = [
         _token_row(
             "jira",
@@ -22,8 +23,24 @@ def token_status(config: AppConfig, *, output_format: str = "text") -> str:
             required=False,
             enabled=config.features.jira,
         ),
-        _token_row("slack", "Slack Bot Token", bool(config.slack.bot_token), config.slack.bot_token, metadata, required=False),
-        _token_row("openai", "OpenAI API Key", bool(config.openai.api_key), config.openai.api_key, metadata),
+        _token_row(
+            "slack",
+            "Slack Bot Token",
+            bool(config.slack.bot_token),
+            config.slack.bot_token,
+            metadata,
+            required=False,
+            enabled=config.features.notifications,
+        ),
+        _token_row(
+            "openai",
+            "OpenAI API Key",
+            bool(config.openai.api_key),
+            config.openai.api_key,
+            metadata,
+            required=openai_required,
+            enabled=config.features.ai,
+        ),
         _github_row(metadata),
         _github_ssh_row(),
     ]

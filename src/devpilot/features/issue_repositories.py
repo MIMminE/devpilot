@@ -21,7 +21,7 @@ class IssueRepositoryLink:
 def link_issue_repository(config: AppConfig, issue_key: str, repo_path: str, *, summary: str = "") -> IssueRepositoryLink:
     normalized_key = issue_key.strip().upper()
     if not normalized_key:
-        raise RuntimeError("Jira issue key is required.")
+        raise RuntimeError("일감 키가 필요합니다.")
 
     repo = Path(repo_path).expanduser().resolve()
     managed = {path.expanduser().resolve() for path in configured_repositories(config)}
@@ -112,8 +112,8 @@ def format_issue_repository_links(output_format: str = "text") -> str:
             for item in items
         )
     if not link_groups:
-        return "Linked Jira repositories: none"
-    rows = ["Linked Jira repositories"]
+        return "연결된 일감 repository 없음"
+    rows = ["연결된 일감 repository"]
     for issue_key, items in link_groups.items():
         rows.append(f"- {issue_key}: {len(items)} repositories")
         for item in items:

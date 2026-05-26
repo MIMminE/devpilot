@@ -62,7 +62,7 @@ def _optional(name: str, value: str, missing: str) -> HealthCheck:
 
 def _optional_integration(name: str, enabled: bool, configured: bool, missing: str) -> HealthCheck:
     if not enabled:
-        return HealthCheck(name, "WARN", "선택 기능 비활성화")
+        return HealthCheck(name, "OK", "선택 기능 비활성화")
     if configured:
         return HealthCheck(name, "OK", "선택 연동 설정됨")
     return HealthCheck(name, "WARN", missing)
@@ -78,7 +78,7 @@ def _slack_configured(config: AppConfig) -> bool:
 
 def _check_jira(config: AppConfig) -> HealthCheck:
     if not config.features.jira:
-        return HealthCheck("jira.connection", "WARN", "선택 기능 비활성화")
+        return HealthCheck("jira.connection", "OK", "선택 기능 비활성화")
     if not _jira_configured(config):
         return HealthCheck("jira.connection", "WARN", "Jira 연동 미설정: 수동 일감 등록으로 진행 가능")
     try:
@@ -90,7 +90,7 @@ def _check_jira(config: AppConfig) -> HealthCheck:
 
 def _check_slack(config: AppConfig, destination: str) -> HealthCheck:
     if not config.features.notifications:
-        return HealthCheck(f"slack.{destination}", "WARN", "선택 기능 비활성화")
+        return HealthCheck(f"slack.{destination}", "OK", "선택 기능 비활성화")
     if not config.slack.destination_configured(destination):
         return HealthCheck(f"slack.{destination}", "WARN", f"{destination} Slack 채널 미설정: 앱 내부 기록으로 진행 가능")
     if config.slack.mode == "oauth":

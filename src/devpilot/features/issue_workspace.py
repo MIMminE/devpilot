@@ -48,7 +48,7 @@ def prepare_issue_workspace(
     key = _normalize_issue_key(issue_key)
     repos = _target_repositories(config, key, repo_paths or [])
     if not repos:
-        raise RuntimeError("workspace에 배치할 repository가 없습니다. --repo를 지정하거나 Jira 일감에 repository를 연결해 주세요.")
+        raise RuntimeError("workspace에 배치할 repository가 없습니다. --repo를 지정하거나 일감에 repository를 연결해 주세요.")
 
     workspace = _workspace_root(key)
     repos_root = workspace / "repos"
@@ -294,8 +294,8 @@ def _workspace_root(issue_key: str) -> Path:
 
 def _normalize_issue_key(value: str) -> str:
     key = value.strip().upper()
-    if not re.fullmatch(r"[A-Z][A-Z0-9]+-\d+", key):
-        raise RuntimeError("Jira 이슈 키 형식이 필요합니다. 예: LMS-123")
+    if not re.fullmatch(r"[A-Z][A-Z0-9]+-[A-Z0-9][A-Z0-9-]*", key):
+        raise RuntimeError("일감 키 형식이 필요합니다. 예: LMS-123 또는 LOCAL-20260526-153000")
     return key
 
 

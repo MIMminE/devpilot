@@ -1103,7 +1103,7 @@ def _format_routine_item(config: AppConfig, key: str, workflow: dict, *, morning
 
 def _recommended_next_action(status: str, has_tests: bool) -> str:
     if status == "assigned":
-        return "repository 연결 후 Jira 키 포함 작업 브랜치 생성"
+        return "repository 연결 후 일감 키 포함 작업 브랜치 생성"
     if status == "branch_ready":
         return "Codex 작업 프롬프트로 구현 시작"
     if status in {"in_progress", "implemented"} and not has_tests:

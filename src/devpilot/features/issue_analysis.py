@@ -5,7 +5,7 @@ import json
 
 from devpilot.app_state import app_data_dir
 from devpilot.config import AppConfig
-from devpilot.features.issue_workflow import record_analysis_request
+from devpilot.features.issue_workflow import get_workflow, record_analysis_request
 from devpilot.features.jira_issues import issue_detail
 from devpilot.integrations.codex_app_server import create_codex_thread
 
@@ -13,9 +13,9 @@ from devpilot.integrations.codex_app_server import create_codex_thread
 def draft_issue_analysis(config: AppConfig, issue_key: str, *, output_format: str = "text", codex_thread: bool = False) -> str:
     key = issue_key.strip().upper()
     if not key:
-        raise RuntimeError("Jira 이슈 키가 필요합니다.")
+        raise RuntimeError("일감 키가 필요합니다.")
 
-    detail = json.loads(issue_detail(config, key, output_format="json"))
+    detail = _issue_detail(config, key)
     prompt = _build_codex_analysis_prompt(detail)
     prompt_path = _write_analysis_prompt(key, prompt)
     summary = str(detail.get("summary") or "")
@@ -112,6 +112,71 @@ def _thread_name(issue_key: str, summary: str) -> str:
     return f"[{issue_key}] 1차 분석" + (f" - {suffix}" if suffix else "")
 
 
+def _issue_detail(config: AppConfig, issue_key: str) -> dict:
+    if config.features.jira:
+        try:
+            return json.loads(issue_detail(config, issue_key, output_format="json"))
+        except Exception:
+            workflow = get_workflow(issue_key)
+            if workflow:
+                return _workflow_detail(issue_key, workflow)
+            raise
+    workflow = get_workflow(issue_key)
+    if workflow:
+        return _workflow_detail(issue_key, workflow)
+    return {
+        "key": issue_key,
+        "url": "",
+        "summary": "",
+        "status": "assigned",
+        "issue_type": "Manual",
+        "priority": "",
+        "project": "Inbox",
+        "assignee": "",
+        "reporter": "",
+        "created": "",
+        "updated": "",
+        "due": "",
+        "description": "Jira 연동이 꺼져 있어 로컬 수동 일감 정보만 기준으로 분석합니다.",
+        "attachments": [],
+        "comments": [],
+    }
+
+
+def _workflow_detail(issue_key: str, workflow: dict) -> dict:
+    return {
+        "key": issue_key,
+        "url": "",
+        "summary": str(workflow.get("summary") or ""),
+        "status": str(workflow.get("status") or "assigned"),
+        "issue_type": "Manual",
+        "priority": "",
+        "project": str(workflow.get("project") or "Inbox"),
+        "assignee": "",
+        "reporter": "",
+        "created": str(workflow.get("created_at") or ""),
+        "updated": str(workflow.get("updated_at") or ""),
+        "due": "",
+        "description": _workflow_description(workflow),
+        "attachments": [],
+        "comments": [],
+    }
+
+
+def _workflow_description(workflow: dict) -> str:
+    parts = []
+    summary = str(workflow.get("summary") or "").strip()
+    if summary:
+        parts.append(summary)
+    next_actions = [str(item).strip() for item in workflow.get("next_actions", []) if str(item).strip()]
+    if next_actions:
+        parts.extend(["", "다음 행동:", *[f"- {item}" for item in next_actions[-5:]]])
+    blockers = [str(item).strip() for item in workflow.get("blockers", []) if str(item).strip()]
+    if blockers:
+        parts.extend(["", "막힘:", *[f"- {item}" for item in blockers[-5:]]])
+    return "\n".join(parts).strip() or "로컬 수동 일감입니다. 제목과 현재 워크플로우 기록을 기준으로 분석합니다."
+
+
 def _build_codex_analysis_prompt(detail: dict) -> str:
     comments = detail.get("comments") if isinstance(detail.get("comments"), list) else []
     attachments = detail.get("attachments") if isinstance(detail.get("attachments"), list) else []
@@ -127,9 +192,9 @@ def _build_codex_analysis_prompt(detail: dict) -> str:
     ]
     return "\n".join(
         [
-            "# Jira 일감 1차 분석 요청",
+            "# 일감 1차 분석 요청",
             "",
-            "너는 내 개발 매니저이자 구현 파트너다. 아래 Jira 일감을 먼저 파악하고, 바로 작업에 들어가기 전에 판단 가능한 범위와 확인이 필요한 범위를 분리해서 정리해줘.",
+            "너는 내 개발 매니저이자 구현 파트너다. 아래 일감을 먼저 파악하고, 바로 작업에 들어가기 전에 판단 가능한 범위와 확인이 필요한 범위를 분리해서 정리해줘.",
             "",
             "## 출력 형식",
             "",
@@ -143,7 +208,7 @@ def _build_codex_analysis_prompt(detail: dict) -> str:
             "6. 리스크와 의존성: 불명확한 요구사항, 외부 연동, 배포/권한/데이터 위험",
             "7. 추천 다음 행동: 브랜치 생성, 코드 탐색, 설계 보강, 담당자 확인 등 바로 할 일",
             "",
-            "## Jira 일감",
+            "## 일감",
             "",
             f"- 키: {detail.get('key') or '-'}",
             f"- 링크: {detail.get('url') or '-'}",
