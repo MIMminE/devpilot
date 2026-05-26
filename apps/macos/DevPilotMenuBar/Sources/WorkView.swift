@@ -58,6 +58,7 @@ struct WorkView: View {
     @State private var isLoadingIssueWorkflows = false
     @State private var isIssueProjectCreatePresented = false
     @State private var newIssueProjectName = ""
+    @State private var newIssueProjectManagementType = "manual"
     @State private var newIssueProjectJiraKey = ""
     @State private var isManualIssueCreatePresented = false
     @State private var manualIssueProject = ""
@@ -503,6 +504,7 @@ struct WorkView: View {
         .sheet(isPresented: $isIssueProjectCreatePresented) {
             IssueProjectCreateSheet(
                 name: $newIssueProjectName,
+                managementType: $newIssueProjectManagementType,
                 jiraProjectKey: $newIssueProjectJiraKey,
                 isRunning: runner.isRunning,
                 onCancel: {
@@ -700,7 +702,7 @@ struct WorkView: View {
                     }
                     .disabled(issueProjectNames.isEmpty)
 
-                    if isJiraIntegrationEnabled {
+                    if isJiraIntegrationEnabled, selectedIssueProjectCanImportJira {
                         Button {
                             Task { await importJiraIssuesForSelectedProject() }
                         } label: {
@@ -746,6 +748,13 @@ struct WorkView: View {
                 HStack(spacing: 8) {
                     issueFlowSourceChip(title: "수동 등록", count: manualWorkflowCount, systemImage: "square.and.pencil", tint: .purple)
                     issueFlowSourceChip(title: "Jira", count: jiraWorkflowCount, systemImage: "link", tint: .indigo, isAttention: jiraWorkflowNeedsAttentionCount > 0)
+                    if selectedIssueProject != "전체" {
+                        issueFlowProjectModeChip(
+                            title: selectedIssueProjectManagementLabel,
+                            systemImage: selectedIssueProjectCanImportJira ? "link.badge.plus" : "tray",
+                            tint: selectedIssueProjectCanImportJira ? .indigo : .purple
+                        )
+                    }
                     Spacer(minLength: 0)
                     if !isJiraIntegrationEnabled {
                         Label("Jira 없이도 수동 일감과 Git 흐름으로 진행됩니다.", systemImage: "checkmark.circle")
@@ -837,6 +846,24 @@ struct WorkView: View {
         )
     }
 
+    private func issueFlowProjectModeChip(title: String, systemImage: String, tint: Color) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .font(.caption.weight(.semibold))
+            Text(title)
+                .font(.caption.weight(.semibold))
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(tint.opacity(0.08))
+        .clipShape(Capsule())
+        .overlay(
+            Capsule()
+                .stroke(tint.opacity(0.16), lineWidth: 1)
+        )
+    }
+
     private var issueWorkflowListPanel: some View {
         DashboardPanel(title: selectedIssueProject == "전체" ? "일감" : "\(selectedIssueProject) 일감", systemImage: "list.bullet") {
             EmptyView()
@@ -901,6 +928,11 @@ struct WorkView: View {
                     .padding(.vertical, 2)
                     .background(selectedIssueProject == project ? Color.white.opacity(0.32) : Color.secondary.opacity(0.12))
                     .clipShape(Capsule())
+                if project != "전체" {
+                    Image(systemName: issueProjectManagementIcon(project))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(issueProjectManagementTint(project))
+                }
             }
             .foregroundStyle(selectedIssueProject == project ? Color.accentColor : Color.secondary)
             .padding(.horizontal, 10)
@@ -940,6 +972,24 @@ struct WorkView: View {
         return Array(Set(registered + fromWorkflows))
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    private var selectedIssueProjectRecord: IssueProjectRecord? {
+        issueProjects.first { $0.name == selectedIssueProject }
+    }
+
+    private var selectedIssueProjectCanImportJira: Bool {
+        selectedIssueProjectRecord?.isJiraManaged == true
+    }
+
+    private var selectedIssueProjectManagementLabel: String {
+        guard let project = selectedIssueProjectRecord else {
+            return "임시 프로젝트"
+        }
+        if project.isJiraManaged {
+            return project.jiraProjectKey.isEmpty ? "Jira 연결" : "Jira \(project.jiraProjectKey)"
+        }
+        return "수동 관리"
     }
 
     private var approvalWaitingCount: Int {
@@ -1041,6 +1091,14 @@ struct WorkView: View {
             return String(prefix)
         }
         return "Inbox"
+    }
+
+    private func issueProjectManagementIcon(_ project: String) -> String {
+        issueProjects.first { $0.name == project }?.isJiraManaged == true ? "link" : "tray"
+    }
+
+    private func issueProjectManagementTint(_ project: String) -> Color {
+        issueProjects.first { $0.name == project }?.isJiraManaged == true ? .indigo : .purple
     }
 
     private func prepareManualIssueProject() {
@@ -4778,12 +4836,13 @@ struct WorkView: View {
 
     private func createIssueProject() async {
         let selected = newIssueProjectName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let result = await runner.registerIssueProject(name: newIssueProjectName, jiraProjectKey: newIssueProjectJiraKey)
+        let result = await runner.registerIssueProject(name: newIssueProjectName, managementType: newIssueProjectManagementType, jiraProjectKey: newIssueProjectJiraKey)
         lastMessage = result.displayText
         showNotice(title: "프로젝트 등록", message: result.displayText, succeeded: result.succeeded)
         if result.succeeded {
             isIssueProjectCreatePresented = false
             newIssueProjectName = ""
+            newIssueProjectManagementType = "manual"
             newIssueProjectJiraKey = ""
             await loadIssueWorkflows(force: true)
             if !selected.isEmpty {
@@ -4795,6 +4854,10 @@ struct WorkView: View {
     private func importJiraIssuesForSelectedProject() async {
         guard selectedIssueProject != "전체" else {
             showNotice(title: "Jira 일감 가져오기", message: "프로젝트를 먼저 선택해 주세요.", succeeded: false)
+            return
+        }
+        guard selectedIssueProjectCanImportJira else {
+            showNotice(title: "Jira 일감 가져오기", message: "\(selectedIssueProject) 프로젝트는 수동 관리 프로젝트입니다. Jira 연결 프로젝트에서만 가져오기를 사용할 수 있습니다.", succeeded: false)
             return
         }
         let result = await runner.importJiraIssues(project: selectedIssueProject)

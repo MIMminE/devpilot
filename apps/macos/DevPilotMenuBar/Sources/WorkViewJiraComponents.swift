@@ -342,10 +342,15 @@ struct ManualIssueCreateSheet: View {
 
 struct IssueProjectCreateSheet: View {
     @Binding var name: String
+    @Binding var managementType: String
     @Binding var jiraProjectKey: String
     let isRunning: Bool
     let onCancel: () -> Void
     let onCreate: () -> Void
+
+    private var isJiraProject: Bool {
+        managementType == "jira"
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -370,12 +375,26 @@ struct IssueProjectCreateSheet: View {
             VStack(alignment: .leading, spacing: 10) {
                 TextField("프로젝트 이름", text: $name)
                     .textFieldStyle(.roundedBorder)
-                TextField("Jira 프로젝트 키 (선택)", text: $jiraProjectKey)
-                    .textFieldStyle(.roundedBorder)
+
+                Picker("관리 방식", selection: $managementType) {
+                    Label("수동 관리", systemImage: "tray").tag("manual")
+                    Label("Jira 연결", systemImage: "link").tag("jira")
+                }
+                .pickerStyle(.segmented)
+                .onChange(of: managementType) { value in
+                    if value == "manual" {
+                        jiraProjectKey = ""
+                    }
+                }
+
+                if isJiraProject {
+                    TextField("Jira 프로젝트 키", text: $jiraProjectKey)
+                        .textFieldStyle(.roundedBorder)
+                }
             }
 
             HStack {
-                Text("Jira 키는 Jira 연동을 켰을 때 해당 프로젝트 일감을 가져오는 기준으로 사용할 수 있습니다.")
+                Text(isJiraProject ? "Jira 프로젝트 키를 기준으로 일감을 가져오고, 로컬 처리 흐름에 연결합니다." : "Jira 없이 수동 등록 일감과 Git workflow 중심으로 관리합니다.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -385,7 +404,7 @@ struct IssueProjectCreateSheet: View {
                     onCreate()
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(isRunning || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(isRunning || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (isJiraProject && jiraProjectKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
             }
         }
         .padding(20)

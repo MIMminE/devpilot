@@ -797,12 +797,16 @@ final class DevPilotRunner: NSObject, ObservableObject, NSWindowDelegate {
         return projects.filter { !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 
-    func registerIssueProject(name: String, jiraProjectKey: String) async -> DevPilotCommandResult {
+    func registerIssueProject(name: String, managementType: String, jiraProjectKey: String) async -> DevPilotCommandResult {
         let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedName.isEmpty else {
             return DevPilotCommandResult(succeeded: false, output: "", summary: "프로젝트 이름을 입력해 주세요.")
         }
         var arguments = ["issue", "projects", "add", normalizedName]
+        let normalizedType = managementType.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !normalizedType.isEmpty {
+            arguments.append(contentsOf: ["--management-type", normalizedType])
+        }
         let normalizedJiraKey = jiraProjectKey.trimmingCharacters(in: .whitespacesAndNewlines)
         if !normalizedJiraKey.isEmpty {
             arguments.append(contentsOf: ["--jira-project-key", normalizedJiraKey])

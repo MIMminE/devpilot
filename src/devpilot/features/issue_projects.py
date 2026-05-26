@@ -9,8 +9,12 @@ from devpilot.features.issue_workflow import start_workflow
 from devpilot.integrations.jira import JiraClient
 
 
-def add_issue_project(name: str, *, jira_project_key: str = "") -> dict:
+def add_issue_project(name: str, *, jira_project_key: str = "", management_type: str = "auto") -> dict:
     normalized = _normalize_project_name(name)
+    normalized_jira_key = jira_project_key.strip().upper()
+    normalized_type = _normalize_management_type(management_type, jira_project_key=normalized_jira_key)
+    if normalized_type == "jira" and not normalized_jira_key:
+        raise RuntimeError("Jira 연결 프로젝트는 Jira 프로젝트 키가 필요합니다.")
     now = datetime.now(timezone.utc).isoformat()
 
     def mutate(state: dict) -> dict:
@@ -20,8 +24,11 @@ def add_issue_project(name: str, *, jira_project_key: str = "") -> dict:
             "created_at": now,
         }
         project["updated_at"] = now
-        if jira_project_key.strip():
-            project["jira_project_key"] = jira_project_key.strip().upper()
+        project["management_type"] = normalized_type
+        if normalized_jira_key:
+            project["jira_project_key"] = normalized_jira_key
+        elif normalized_type == "manual":
+            project["jira_project_key"] = ""
         projects[normalized] = project
         state["issue_projects"] = projects
         return project
@@ -43,6 +50,7 @@ def issue_projects(*, include_workflows: bool = True) -> list[dict]:
                     "created_at": "",
                     "updated_at": "",
                     "jira_project_key": "",
+                    "management_type": "manual",
                     "implicit": True,
                 }
     return sorted(projects.values(), key=lambda item: str(item.get("name") or "").lower())
@@ -57,14 +65,20 @@ def format_issue_projects(output_format: str = "text") -> str:
     lines = ["등록된 프로젝트"]
     for project in projects:
         jira_key = str(project.get("jira_project_key") or "").strip()
-        suffix = f" | Jira: {jira_key}" if jira_key else ""
+        project_type = _project_type(project)
+        suffix = f" | 방식: {'Jira 연결' if project_type == 'jira' else '수동 관리'}"
+        if jira_key:
+            suffix += f" | Jira: {jira_key}"
         lines.append(f"- {project.get('name')}{suffix}")
     return "\n".join(lines)
 
 
 def import_jira_project_issues(config: AppConfig, project: str, *, max_results: int = 20) -> str:
     project_name = _normalize_project_name(project)
-    jira_project = _jira_project_key(project_name) or project_name
+    project_record = _project_record(project_name)
+    if project_record and _project_type(project_record) != "jira":
+        return f"{project_name} 프로젝트는 수동 관리 프로젝트입니다. Jira 연결 프로젝트로 등록한 뒤 가져오기를 실행해 주세요."
+    jira_project = str((project_record or {}).get("jira_project_key") or "").strip().upper() or project_name
     client = JiraClient(config.jira)
     jql = f'project = "{jira_project}" AND statusCategory != Done ORDER BY priority DESC, updated DESC'
     issues = client.search(jql, max_results=max_results)
@@ -97,7 +111,11 @@ def _project_map(state: dict) -> dict[str, dict]:
             continue
         name = str(value.get("name") or key).strip()
         if name:
-            projects[name] = dict(value, name=name)
+            project = dict(value, name=name)
+            project["management_type"] = _project_type(project)
+            if project["management_type"] == "manual" and not str(project.get("jira_project_key") or "").strip():
+                project["jira_project_key"] = ""
+            projects[name] = project
     return projects
 
 
@@ -108,8 +126,29 @@ def _normalize_project_name(value: str) -> str:
     return name
 
 
-def _jira_project_key(project_name: str) -> str:
+def _normalize_management_type(value: str, *, jira_project_key: str = "") -> str:
+    normalized = value.strip().lower()
+    if normalized in {"jira", "jira-linked", "jira_connected"}:
+        return "jira"
+    if normalized in {"manual", "local"}:
+        return "manual"
+    return "jira" if jira_project_key.strip() else "manual"
+
+
+def _project_type(project: dict) -> str:
+    value = str(project.get("management_type") or "").strip().lower()
+    if value in {"jira", "manual"}:
+        return value
+    return "jira" if str(project.get("jira_project_key") or "").strip() else "manual"
+
+
+def _project_record(project_name: str) -> dict | None:
     for project in issue_projects(include_workflows=False):
         if str(project.get("name") or "") == project_name:
-            return str(project.get("jira_project_key") or "").strip().upper()
-    return ""
+            return project
+    return None
+
+
+def _jira_project_key(project_name: str) -> str:
+    project = _project_record(project_name)
+    return str((project or {}).get("jira_project_key") or "").strip().upper()

@@ -15,19 +15,24 @@ struct IssueRepositoryLinkRecord: Identifiable, Hashable {
 struct IssueProjectRecord: Identifiable, Decodable, Hashable {
     let name: String
     let jiraProjectKey: String
+    let managementType: String
     let implicit: Bool
 
     var id: String { name }
+    var isJiraManaged: Bool { managementType == "jira" }
+    var isManualManaged: Bool { managementType != "jira" }
 
     enum CodingKeys: String, CodingKey {
         case name
         case jiraProjectKey = "jira_project_key"
+        case managementType = "management_type"
         case implicit
     }
 
-    init(name: String, jiraProjectKey: String = "", implicit: Bool = false) {
+    init(name: String, jiraProjectKey: String = "", managementType: String = "manual", implicit: Bool = false) {
         self.name = name
         self.jiraProjectKey = jiraProjectKey
+        self.managementType = managementType
         self.implicit = implicit
     }
 
@@ -35,6 +40,8 @@ struct IssueProjectRecord: Identifiable, Decodable, Hashable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
         jiraProjectKey = try container.decodeIfPresent(String.self, forKey: .jiraProjectKey) ?? ""
+        let decodedType = try container.decodeIfPresent(String.self, forKey: .managementType) ?? ""
+        managementType = decodedType.isEmpty ? (jiraProjectKey.isEmpty ? "manual" : "jira") : decodedType
         implicit = try container.decodeIfPresent(Bool.self, forKey: .implicit) ?? false
     }
 }

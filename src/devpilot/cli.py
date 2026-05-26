@@ -128,6 +128,7 @@ def build_parser() -> argparse.ArgumentParser:
     issue_projects_list.add_argument("--format", choices=["text", "json"], default="text", help="출력 형식")
     issue_projects_add = issue_projects_sub.add_parser("add", help="일감 프로젝트 등록")
     issue_projects_add.add_argument("name", help="프로젝트 이름")
+    issue_projects_add.add_argument("--management-type", choices=["auto", "manual", "jira"], default="auto", help="프로젝트 관리 방식")
     issue_projects_add.add_argument("--jira-project-key", default="", help="연결할 Jira 프로젝트 키")
     issue_projects_import = issue_projects_sub.add_parser("import-jira", help="프로젝트의 Jira 일감을 워크플로우로 가져오기")
     issue_projects_import.add_argument("name", help="프로젝트 이름")
@@ -468,7 +469,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.area == "issue" and args.command == "projects":
         if args.projects_command == "add":
-            project = add_issue_project(args.name, jira_project_key=args.jira_project_key)
+            project = add_issue_project(args.name, jira_project_key=args.jira_project_key, management_type=args.management_type)
             print(f"프로젝트를 등록했습니다: {project.get('name')}")
             return 0
         if args.projects_command == "list":
