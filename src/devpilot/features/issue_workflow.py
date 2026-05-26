@@ -298,8 +298,7 @@ def issue_director_briefing(config: AppConfig, issue_key: str, *, output_format:
         return _format_director_payload(cached)
     payload = _director_payload(config, key, workflow, provider=selected_provider)
     payload = _apply_director_provider(config, key, payload, selected_provider)
-    if selected_provider != "local-director":
-        _save_director_payload(config, key, payload)
+    _save_director_payload(config, key, payload)
     if output_format == "json":
         return json.dumps(payload, ensure_ascii=False, indent=2)
     return _format_director_payload(payload)
@@ -528,6 +527,15 @@ def _director_payload(config: AppConfig, key: str, workflow: dict, *, provider: 
 
 def _apply_director_provider(config: AppConfig, key: str, payload: dict, provider: str) -> dict:
     if provider == "local-director":
+        payload["provider_status"] = "local"
+        payload["provider_note"] = "로컬 상태 기반 초안입니다. 외부 AI 클라이언트 호출은 수행하지 않았습니다."
+        payload["ai_exchange"] = _persist_ai_exchange_files(
+            key,
+            provider,
+            request_text=json.dumps(payload, ensure_ascii=False, indent=2),
+            response_text=json.dumps(payload, ensure_ascii=False, indent=2),
+            status="local",
+        )
         return payload
     if provider == "codex-local":
         return _codex_director_payload(key, payload)
@@ -563,11 +571,29 @@ def _codex_director_payload(key: str, payload: dict) -> dict:
                 payload["provider_note"] = f"기존 Codex 스레드 재사용 실패 후 새 스레드를 생성했습니다: {exc}"
             except Exception as fallback_exc:
                 payload["provider_note"] = f"Codex Local 실행 실패: {fallback_exc}"
+                payload["provider_status"] = "failed"
                 payload["prompt_path"] = str(prompt_path)
+                payload["ai_exchange"] = _persist_ai_exchange_files(
+                    key,
+                    "codex-local",
+                    request_text=prompt,
+                    response_text=str(fallback_exc),
+                    status="failed",
+                    error=str(fallback_exc),
+                )
                 return payload
         else:
             payload["provider_note"] = f"Codex Local 실행 실패: {exc}"
+            payload["provider_status"] = "failed"
             payload["prompt_path"] = str(prompt_path)
+            payload["ai_exchange"] = _persist_ai_exchange_files(
+                key,
+                "codex-local",
+                request_text=prompt,
+                response_text=str(exc),
+                status="failed",
+                error=str(exc),
+            )
             return payload
 
     response_path = directory / f"{key.lower()}-director-response.md"
@@ -576,6 +602,7 @@ def _codex_director_payload(key: str, payload: dict) -> dict:
     if parsed:
         parsed.setdefault("issue_key", payload.get("issue_key", key))
         parsed["mode"] = "codex-local"
+        parsed["provider_status"] = "succeeded"
         parsed["provider_note"] = "Codex Local 응답 기반으로 지휘관 초안을 갱신했습니다."
         parsed["codex_thread_id"] = thread.thread_id
         parsed["codex_thread_name"] = thread.thread_name
@@ -583,14 +610,31 @@ def _codex_director_payload(key: str, payload: dict) -> dict:
         parsed["codex_workspace"] = thread.cwd
         parsed["prompt_path"] = str(prompt_path)
         parsed["response_path"] = str(response_path)
+        parsed["ai_exchange"] = _persist_ai_exchange_files(
+            key,
+            "codex-local",
+            request_text=prompt,
+            response_text=thread.response,
+            status="succeeded",
+            thread_id=thread.thread_id,
+        )
         return parsed
     payload["provider_note"] = "Codex 응답을 JSON으로 해석하지 못해 local-director 결과를 사용했습니다."
+    payload["provider_status"] = "fallback"
     payload["codex_thread_id"] = thread.thread_id
     payload["codex_thread_name"] = thread.thread_name
     payload["codex_thread_path"] = thread.thread_path
     payload["codex_workspace"] = thread.cwd
     payload["prompt_path"] = str(prompt_path)
     payload["response_path"] = str(response_path)
+    payload["ai_exchange"] = _persist_ai_exchange_files(
+        key,
+        "codex-local",
+        request_text=prompt,
+        response_text=thread.response,
+        status="fallback",
+        thread_id=thread.thread_id,
+    )
     return payload
 
 
@@ -691,13 +735,15 @@ def _json_from_text(text: str) -> dict | None:
 
 
 def _openai_director_payload(config: AppConfig, payload: dict) -> dict:
+    key = str(payload.get("issue_key") or "issue").strip().upper()
     prompt = (
         "아래 JSON은 개발 일감 처리 상태입니다. 기존 JSON schema를 유지하면서 "
         "sections/body/items/risks/current_focus/next_approval을 더 실무적인 한국어로 보강해줘. "
         "반드시 JSON만 반환해줘.\n\n"
         + json.dumps(payload, ensure_ascii=False, indent=2)
     )
-    fallback = json.dumps({**payload, "provider_note": "OpenAI API 키가 없어 local-director 결과를 사용했습니다."}, ensure_ascii=False)
+    fallback_note = "OpenAI API 키가 없어 local-director 결과를 사용했습니다."
+    fallback = json.dumps({**payload, "provider_note": fallback_note, "provider_status": "fallback"}, ensure_ascii=False)
     text = generate_text(
         config.openai,
         system="You are a Korean engineering manager. Return strict JSON only.",
@@ -708,17 +754,43 @@ def _openai_director_payload(config: AppConfig, payload: dict) -> dict:
         loaded = json.loads(text)
     except json.JSONDecodeError:
         payload["provider_note"] = "OpenAI 응답을 JSON으로 해석하지 못해 local-director 결과를 사용했습니다."
+        payload["provider_status"] = "fallback"
+        payload["ai_exchange"] = _persist_ai_exchange_files(
+            key,
+            "openai-api",
+            request_text=prompt,
+            response_text=text,
+            status="fallback",
+        )
         return payload
     if isinstance(loaded, dict):
         loaded["mode"] = "openai-api"
+        loaded["provider_status"] = "fallback" if not config.openai.api_key else "succeeded"
+        loaded.setdefault("provider_note", fallback_note if not config.openai.api_key else "OpenAI API 응답 기반으로 지휘관 초안을 갱신했습니다.")
+        loaded["ai_exchange"] = _persist_ai_exchange_files(
+            key,
+            "openai-api",
+            request_text=prompt,
+            response_text=text,
+            status=loaded["provider_status"],
+        )
         return loaded
     return payload
 
 
 def _custom_director_payload(config: AppConfig, payload: dict) -> dict:
+    key = str(payload.get("issue_key") or "issue").strip().upper()
     command = config.openai.custom_command.strip()
     if not command:
         payload["provider_note"] = "custom-command가 설정되지 않아 local-director 결과를 사용했습니다."
+        payload["provider_status"] = "fallback"
+        payload["ai_exchange"] = _persist_ai_exchange_files(
+            key,
+            "custom-command",
+            request_text=json.dumps(payload, ensure_ascii=False, indent=2),
+            response_text=payload["provider_note"],
+            status="fallback",
+        )
         return payload
     try:
         result = subprocess.run(
@@ -731,18 +803,53 @@ def _custom_director_payload(config: AppConfig, payload: dict) -> dict:
         )
     except Exception as exc:
         payload["provider_note"] = f"custom-command 실행 실패: {exc}"
+        payload["provider_status"] = "failed"
+        payload["ai_exchange"] = _persist_ai_exchange_files(
+            key,
+            "custom-command",
+            request_text=json.dumps(payload, ensure_ascii=False, indent=2),
+            response_text=str(exc),
+            status="failed",
+            error=str(exc),
+        )
         return payload
     if result.returncode != 0:
         detail = (result.stderr or result.stdout).strip()
         payload["provider_note"] = f"custom-command 실패: {detail[:300]}"
+        payload["provider_status"] = "failed"
+        payload["ai_exchange"] = _persist_ai_exchange_files(
+            key,
+            "custom-command",
+            request_text=json.dumps(payload, ensure_ascii=False, indent=2),
+            response_text=detail,
+            status="failed",
+            error=detail,
+        )
         return payload
     try:
         loaded = json.loads(result.stdout)
     except json.JSONDecodeError:
         payload["provider_note"] = "custom-command 출력이 JSON이 아니어서 local-director 결과를 사용했습니다."
+        payload["provider_status"] = "fallback"
+        payload["ai_exchange"] = _persist_ai_exchange_files(
+            key,
+            "custom-command",
+            request_text=json.dumps(payload, ensure_ascii=False, indent=2),
+            response_text=result.stdout,
+            status="fallback",
+        )
         return payload
     if isinstance(loaded, dict):
         loaded["mode"] = "custom-command"
+        loaded["provider_status"] = "succeeded"
+        loaded.setdefault("provider_note", "custom-command 응답 기반으로 지휘관 초안을 갱신했습니다.")
+        loaded["ai_exchange"] = _persist_ai_exchange_files(
+            key,
+            "custom-command",
+            request_text=json.dumps(payload, ensure_ascii=False, indent=2),
+            response_text=result.stdout,
+            status="succeeded",
+        )
         return loaded
     return payload
 
@@ -757,12 +864,56 @@ def _save_director_payload(config: AppConfig, key: str, payload: dict) -> None:
             "generated_at": payload.get("generated_at") or now,
             "payload": payload,
         }
+        exchange = payload.get("ai_exchange") if isinstance(payload.get("ai_exchange"), dict) else {}
+        if exchange:
+            sessions = dict(workflow.get("ai_sessions") or {})
+            mode = str(payload.get("mode") or exchange.get("provider") or "local-director")
+            sessions[mode] = {
+                "provider": mode,
+                "status": exchange.get("status") or payload.get("provider_status") or "",
+                "updated_at": now,
+                "request_path": exchange.get("request_path") or "",
+                "response_path": exchange.get("response_path") or "",
+                "thread_id": exchange.get("thread_id") or payload.get("codex_thread_id") or "",
+                "error": exchange.get("error") or "",
+            }
+            workflow["ai_sessions"] = sessions
+            exchanges = [item for item in workflow.get("ai_exchanges", []) if isinstance(item, dict)]
+            exchanges.append({**sessions[mode], "created_at": now})
+            workflow["ai_exchanges"] = exchanges[-50:]
         workflow["updated_at"] = now
         _append_event(workflow, "director_generated", f"AI 작업 지휘관을 갱신했습니다: {payload.get('mode') or '-'}", now)
         state["issue_workflows"] = workflows
         return workflow
 
     update_state(mutate)
+
+
+def _persist_ai_exchange_files(
+    key: str,
+    provider: str,
+    *,
+    request_text: str,
+    response_text: str,
+    status: str,
+    thread_id: str = "",
+    error: str = "",
+) -> dict:
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
+    directory = app_data_dir() / "ai-sessions" / key / provider
+    directory.mkdir(parents=True, exist_ok=True)
+    request_path = directory / f"{timestamp}-request.txt"
+    response_path = directory / f"{timestamp}-response.txt"
+    request_path.write_text(request_text.rstrip() + "\n", encoding="utf-8")
+    response_path.write_text(response_text.rstrip() + "\n", encoding="utf-8")
+    return {
+        "provider": provider,
+        "status": status,
+        "request_path": str(request_path),
+        "response_path": str(response_path),
+        "thread_id": thread_id,
+        "error": error,
+    }
 
 
 def _format_director_payload(payload: dict) -> str:
