@@ -46,16 +46,6 @@ struct WorkSidebarView: View {
 
             VStack(spacing: 6) {
                 WorkSidebarButton(
-                    title: "홈",
-                    systemImage: "rectangle.grid.2x2",
-                    detail: nil,
-                    isSelected: selectedSection == "dashboard" || selectedSection == "briefing",
-                    isCollapsed: isCollapsed
-                ) {
-                    selectedSection = "dashboard"
-                }
-
-                WorkSidebarButton(
                     title: "일감 처리",
                     systemImage: "point.3.connected.trianglepath.dotted",
                     detail: nil,
@@ -63,6 +53,16 @@ struct WorkSidebarView: View {
                     isCollapsed: isCollapsed
                 ) {
                     selectedSection = "issueFlow"
+                }
+
+                WorkSidebarButton(
+                    title: "오늘 요약",
+                    systemImage: "rectangle.grid.2x2",
+                    detail: nil,
+                    isSelected: selectedSection == "dashboard" || selectedSection == "briefing",
+                    isCollapsed: isCollapsed
+                ) {
+                    selectedSection = "dashboard"
                 }
 
                 WorkSidebarButton(
@@ -86,7 +86,7 @@ struct WorkSidebarView: View {
                 }
 
                 WorkSidebarButton(
-                    title: "상태",
+                    title: "연동 상태",
                     systemImage: "key.horizontal",
                     detail: nil,
                     isSelected: selectedSection == "tokens",

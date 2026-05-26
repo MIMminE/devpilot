@@ -16,7 +16,7 @@ struct WorkView: View {
     @AppStorage("devpilot.work.appearance") private var appearance = "system"
     @AppStorage("devpilot.work.repositoryOrder") private var repositoryOrderRaw = ""
     @AppStorage("devpilot.work.sidebarCollapsed") private var isSidebarCollapsed = false
-    @AppStorage("devpilot.work.selectedSection") private var selectedSection = "dashboard"
+    @AppStorage("devpilot.work.selectedSection") private var selectedSection = "issueFlow"
     @AppStorage("devpilot.work.workspaceHubMode") private var workspaceHubMode = "repositories"
     @AppStorage("devpilot.work.reportHubMode") private var reportHubMode = "report"
     @AppStorage("devpilot.work.privacyMaskEnabled") private var privacyMaskEnabled = false
@@ -642,34 +642,7 @@ struct WorkView: View {
 
     private var issueFlowSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            DashboardPanel(title: "일감 처리 콘솔", systemImage: "point.3.connected.trianglepath.dotted") {
-                HStack(spacing: 6) {
-                    panelActionChip(title: "프로젝트 등록", systemImage: "folder.badge.plus") {
-                        isIssueProjectCreatePresented = true
-                    }
-                    panelActionChip(title: "직접 등록", systemImage: "plus.app") {
-                        prepareManualIssueProject()
-                        isManualIssueCreatePresented = true
-                    }
-                    .disabled(issueProjectNames.isEmpty)
-                    panelActionChip(title: "Jira 가져오기", systemImage: "tray.and.arrow.down") {
-                        Task { await importJiraIssuesForSelectedProject() }
-                    }
-                    .disabled(runner.isRunning || selectedIssueProject == "전체" || !isJiraIntegrationEnabled)
-                    panelActionChip(title: "새로고침", systemImage: "arrow.clockwise") {
-                        Task { await loadIssueWorkflows(force: true) }
-                    }
-                    .disabled(isLoadingIssueWorkflows)
-                }
-            } content: {
-                HStack(spacing: 10) {
-                    briefingMetric(title: "전체 일감", value: "\(issueWorkflows.count)", systemImage: "checklist", tint: .blue, isAttention: false)
-                    briefingMetric(title: "Jira", value: "\(jiraWorkflowCount)", systemImage: "link.badge.plus", tint: .indigo, isAttention: jiraWorkflowNeedsAttentionCount > 0)
-                    briefingMetric(title: "수동", value: "\(manualWorkflowCount)", systemImage: "square.and.pencil", tint: .purple, isAttention: false)
-                    briefingMetric(title: "승인 대기", value: "\(approvalWaitingCount)", systemImage: "hand.tap", tint: .orange, isAttention: approvalWaitingCount > 0)
-                    briefingMetric(title: "진행 중", value: "\(activeWorkflowCount)", systemImage: "arrow.triangle.branch", tint: .green, isAttention: activeWorkflowCount > 0)
-                }
-            }
+            issueFlowOverviewPanel
 
             if isLoadingIssueWorkflows {
                 DashboardPanel(title: "조회 중", systemImage: "hourglass") {
@@ -696,17 +669,172 @@ struct WorkView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 12) {
-                        issueWorkflowListPanel
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
-
                         if let workflow = selectedIssueWorkflow {
                             issueWorkflowDetail(workflow)
                                 .frame(maxWidth: .infinity, alignment: .topLeading)
                         }
+
+                        issueWorkflowListPanel
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
                     }
                 }
             }
         }
+    }
+
+    private var issueFlowOverviewPanel: some View {
+        DashboardPanel(title: "일감 처리 플로우", systemImage: "point.3.connected.trianglepath.dotted") {
+            HStack(spacing: 6) {
+                Menu {
+                    Button {
+                        isIssueProjectCreatePresented = true
+                    } label: {
+                        Label("프로젝트 등록", systemImage: "folder.badge.plus")
+                    }
+
+                    Button {
+                        prepareManualIssueProject()
+                        isManualIssueCreatePresented = true
+                    } label: {
+                        Label("직접 일감 등록", systemImage: "plus.app")
+                    }
+                    .disabled(issueProjectNames.isEmpty)
+
+                    if isJiraIntegrationEnabled {
+                        Button {
+                            Task { await importJiraIssuesForSelectedProject() }
+                        } label: {
+                            Label("Jira 일감 가져오기", systemImage: "tray.and.arrow.down")
+                        }
+                        .disabled(runner.isRunning || selectedIssueProject == "전체")
+                    }
+                } label: {
+                    Label("등록", systemImage: "plus.circle")
+                        .font(.caption2.weight(.semibold))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 6)
+                        .background(Color.accentColor.opacity(0.14))
+                        .clipShape(Capsule())
+                }
+                .menuStyle(.borderlessButton)
+
+                panelActionChip(title: "새로고침", systemImage: "arrow.clockwise") {
+                    Task { await loadIssueWorkflows(force: true) }
+                }
+                .disabled(isLoadingIssueWorkflows)
+            }
+        } content: {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top, spacing: 12) {
+                    issueFlowNextActionCard
+
+                    LazyVGrid(
+                        columns: [
+                            GridItem(.flexible(minimum: 110), spacing: 10),
+                            GridItem(.flexible(minimum: 110), spacing: 10),
+                            GridItem(.flexible(minimum: 110), spacing: 10),
+                        ],
+                        spacing: 10
+                    ) {
+                        briefingMetric(title: "전체", value: "\(issueWorkflows.count)", systemImage: "checklist", tint: .blue, isAttention: false)
+                        briefingMetric(title: "승인 대기", value: "\(approvalWaitingCount)", systemImage: "hand.tap", tint: .orange, isAttention: approvalWaitingCount > 0)
+                        briefingMetric(title: "진행 중", value: "\(activeWorkflowCount)", systemImage: "arrow.triangle.branch", tint: .green, isAttention: activeWorkflowCount > 0)
+                    }
+                    .frame(maxWidth: 420)
+                }
+
+                HStack(spacing: 8) {
+                    issueFlowSourceChip(title: "수동 등록", count: manualWorkflowCount, systemImage: "square.and.pencil", tint: .purple)
+                    issueFlowSourceChip(title: "Jira", count: jiraWorkflowCount, systemImage: "link", tint: .indigo, isAttention: jiraWorkflowNeedsAttentionCount > 0)
+                    Spacer(minLength: 0)
+                    if !isJiraIntegrationEnabled {
+                        Label("Jira 없이도 수동 일감과 Git 흐름으로 진행됩니다.", systemImage: "checkmark.circle")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    private var issueFlowNextActionCard: some View {
+        let workflow = selectedIssueWorkflow
+        let stage = workflow.map(nextIssueFlowStage)
+        let state = workflow.flatMap { item in stage.map { workflowStageState(item, stage: $0) } }
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: state?.systemImage ?? "arrow.right.circle")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(state?.tint ?? Color.accentColor)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("다음에 할 일")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Text(stage?.title ?? "일감 선택 또는 등록")
+                        .font(.subheadline.weight(.semibold))
+                }
+                Spacer()
+                if let state {
+                    flowTag(state.label, tint: state.tint)
+                }
+            }
+
+            Text(workflow.map(nextWorkflowAction) ?? "프로젝트를 만들고 수동 일감을 등록하면 분석부터 보고까지 한 화면에서 이어집니다.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                if let workflow, let stage {
+                    workflowStageActionButtons(workflow, stage: stage)
+                } else {
+                    Button {
+                        isIssueProjectCreatePresented = true
+                    } label: {
+                        Label("프로젝트 등록", systemImage: "folder.badge.plus")
+                    }
+                    Button {
+                        prepareManualIssueProject()
+                        isManualIssueCreatePresented = true
+                    } label: {
+                        Label("일감 등록", systemImage: "plus.app")
+                    }
+                    .disabled(issueProjectNames.isEmpty)
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background((state?.tint ?? Color.accentColor).opacity(0.1))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke((state?.tint ?? Color.accentColor).opacity(0.24), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func issueFlowSourceChip(title: String, count: Int, systemImage: String, tint: Color, isAttention: Bool = false) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .font(.caption.weight(.semibold))
+            Text(title)
+                .font(.caption.weight(.semibold))
+            Text("\(count)")
+                .font(.caption2.weight(.bold))
+                .monospacedDigit()
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(tint.opacity(isAttention ? 0.14 : 0.08))
+        .clipShape(Capsule())
+        .overlay(
+            Capsule()
+                .stroke(tint.opacity(isAttention ? 0.34 : 0.16), lineWidth: 1)
+        )
     }
 
     private var issueWorkflowListPanel: some View {
