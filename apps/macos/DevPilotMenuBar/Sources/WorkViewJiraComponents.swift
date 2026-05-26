@@ -256,7 +256,8 @@ struct JiraQuickCreateSheet: View {
 }
 
 struct ManualIssueCreateSheet: View {
-    let project: String
+    @Binding var project: String
+    let projects: [String]
     @Binding var summary: String
     @Binding var detail: String
     @Binding var issueType: String
@@ -287,15 +288,13 @@ struct ManualIssueCreateSheet: View {
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Label(project.isEmpty ? "프로젝트 미선택" : project, systemImage: "folder")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(project.isEmpty ? Color.orange : Color.accentColor)
-                    Spacer()
+                Picker("프로젝트", selection: $project) {
+                    ForEach(projects, id: \.self) { item in
+                        Label(item, systemImage: "folder").tag(item)
+                    }
                 }
-                .padding(9)
-                .background(Color(nsColor: .controlBackgroundColor).opacity(0.55))
-                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .pickerStyle(.menu)
+                .disabled(projects.isEmpty)
 
                 HStack(spacing: 10) {
                     Picker("종류", selection: $issueType) {
@@ -332,7 +331,7 @@ struct ManualIssueCreateSheet: View {
                     onCreate()
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(isRunning || summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(isRunning || project.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
         .padding(20)

@@ -488,7 +488,8 @@ struct WorkView: View {
         }
         .sheet(isPresented: $isManualIssueCreatePresented) {
             ManualIssueCreateSheet(
-                project: manualIssueProject,
+                project: $manualIssueProject,
+                projects: issueProjectNames,
                 summary: $manualIssueSummary,
                 detail: $manualIssueDetail,
                 issueType: $manualIssueType,
@@ -645,6 +646,7 @@ struct WorkView: View {
     private var issueFlowSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             issueFlowOverviewPanel
+            issueProjectAssignmentPanel
 
             if isLoadingIssueWorkflows {
                 DashboardPanel(title: "조회 중", systemImage: "hourglass") {
@@ -704,7 +706,7 @@ struct WorkView: View {
 
                     if isJiraIntegrationEnabled, selectedIssueProjectCanImportJira {
                         Button {
-                            Task { await importJiraIssuesForSelectedProject() }
+                            Task { await importJiraIssues(project: selectedIssueProject) }
                         } label: {
                             Label("Jira 일감 가져오기", systemImage: "tray.and.arrow.down")
                         }
@@ -896,6 +898,92 @@ struct WorkView: View {
                     }
                 }
             }
+        }
+    }
+
+    private var issueProjectAssignmentPanel: some View {
+        DashboardPanel(title: "프로젝트별 일감 부여", systemImage: "folder.badge.plus") {
+            Button {
+                isIssueProjectCreatePresented = true
+            } label: {
+                Label("프로젝트 추가", systemImage: "plus")
+            }
+            .buttonStyle(.borderless)
+        } content: {
+            if issueProjectNames.isEmpty {
+                EmptyDashboardState(systemImage: "folder.badge.plus", title: "등록된 프로젝트가 없습니다", message: "프로젝트를 먼저 만들면 그 아래에 수동 일감이나 Jira 일감을 부여할 수 있습니다.")
+            } else {
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(minimum: 220), spacing: 10, alignment: .top),
+                        GridItem(.flexible(minimum: 220), spacing: 10, alignment: .top),
+                        GridItem(.flexible(minimum: 220), spacing: 10, alignment: .top),
+                    ],
+                    alignment: .leading,
+                    spacing: 10
+                ) {
+                    ForEach(issueProjectNames, id: \.self) { project in
+                        issueProjectAssignmentCard(project)
+                    }
+                }
+            }
+        }
+    }
+
+    private func issueProjectAssignmentCard(_ project: String) -> some View {
+        let record = issueProjects.first { $0.name == project }
+        let workflows = issueWorkflows.filter { issueProjectName($0) == project }
+        let activeCount = workflows.filter { !["done", "reported", "merged"].contains($0.status) }.count
+        let isJiraManaged = record?.isJiraManaged == true
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: isJiraManaged ? "link.badge.plus" : "tray")
+                    .foregroundStyle(isJiraManaged ? Color.indigo : Color.purple)
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(project)
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                    Text(projectManagementDescription(record))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                Spacer()
+                flowTag("\(workflows.count)", tint: activeCount > 0 ? .green : .secondary)
+            }
+
+            HStack(spacing: 7) {
+                Button {
+                    prepareManualIssueProject(project)
+                    isManualIssueCreatePresented = true
+                } label: {
+                    Label("일감 등록", systemImage: "plus.app")
+                }
+                .disabled(runner.isRunning)
+
+                if isJiraManaged {
+                    Button {
+                        Task { await importJiraIssues(project: project) }
+                    } label: {
+                        Label("Jira 가져오기", systemImage: "tray.and.arrow.down")
+                    }
+                    .disabled(runner.isRunning || !isJiraIntegrationEnabled)
+                    .help(isJiraIntegrationEnabled ? "Jira 프로젝트 일감을 가져옵니다." : "Jira 연동이 꺼져 있습니다.")
+                }
+            }
+            .font(.caption)
+        }
+        .padding(10)
+        .background(selectedIssueProject == project ? Color.accentColor.opacity(0.14) : Color(nsColor: .controlBackgroundColor).opacity(0.46))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(selectedIssueProject == project ? Color.accentColor.opacity(0.34) : Color(nsColor: .separatorColor).opacity(0.35), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .onTapGesture {
+            selectIssueProject(project)
         }
     }
 
@@ -1101,12 +1189,27 @@ struct WorkView: View {
         issueProjects.first { $0.name == project }?.isJiraManaged == true ? .indigo : .purple
     }
 
+    private func projectManagementDescription(_ project: IssueProjectRecord?) -> String {
+        guard let project else {
+            return "workflow에서 감지된 프로젝트"
+        }
+        if project.isJiraManaged {
+            return project.jiraProjectKey.isEmpty ? "Jira 연결" : "Jira \(project.jiraProjectKey)"
+        }
+        return "수동 관리"
+    }
+
     private func prepareManualIssueProject() {
         if selectedIssueProject != "전체" {
             manualIssueProject = selectedIssueProject
             return
         }
         manualIssueProject = issueProjectNames.first ?? ""
+    }
+
+    private func prepareManualIssueProject(_ project: String) {
+        selectIssueProject(project)
+        manualIssueProject = project
     }
 
     private func issueWorkflowListRow(_ item: IssueWorkflowRecord) -> some View {
@@ -4851,16 +4954,17 @@ struct WorkView: View {
         }
     }
 
-    private func importJiraIssuesForSelectedProject() async {
-        guard selectedIssueProject != "전체" else {
+    private func importJiraIssues(project: String) async {
+        guard project != "전체" else {
             showNotice(title: "Jira 일감 가져오기", message: "프로젝트를 먼저 선택해 주세요.", succeeded: false)
             return
         }
-        guard selectedIssueProjectCanImportJira else {
-            showNotice(title: "Jira 일감 가져오기", message: "\(selectedIssueProject) 프로젝트는 수동 관리 프로젝트입니다. Jira 연결 프로젝트에서만 가져오기를 사용할 수 있습니다.", succeeded: false)
+        guard issueProjects.first(where: { $0.name == project })?.isJiraManaged == true else {
+            showNotice(title: "Jira 일감 가져오기", message: "\(project) 프로젝트는 수동 관리 프로젝트입니다. Jira 연결 프로젝트에서만 가져오기를 사용할 수 있습니다.", succeeded: false)
             return
         }
-        let result = await runner.importJiraIssues(project: selectedIssueProject)
+        selectIssueProject(project)
+        let result = await runner.importJiraIssues(project: project)
         lastMessage = result.displayText
         showNotice(title: "Jira 일감 가져오기", message: result.displayText, succeeded: result.succeeded)
         if result.succeeded {
